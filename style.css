@@ -1,0 +1,12 @@
+html,body{height:100%;margin:0;background:#0a0a0f;font-family:Inter,Arial,Helvetica,sans-serif}
+#game-container{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+canvas{display:block}
+.ui-overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
+.top-right{position:absolute;top:12px;right:16px;color:#fff;pointer-events:auto}
+.btn{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:#fff;padding:8px 12px;border-radius:6px;cursor:pointer}
+.panel{background:linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01));padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);backdrop-filter:blur(4px)}
+.shop-grid{display:flex;gap:8px;flex-wrap:wrap}
+.locked{opacity:0.45;position:relative}
+.locked::after{content:'Locked';position:absolute;right:6px;bottom:6px;font-size:11px;color:#ffcc00}
+.slider{width:150px}
+.persist-note{font-size:12px;color:#aaa}
