@@ -444,7 +444,6 @@ class MapGenerator {
     }
   }
   pushSegment(force=false) {
-    // Simple procedural segments respecting maxJumpHeight
     const segWidth = Math.round(this.rng.range(300, 700));
     const platformY = Math.round(this.rng.range(this.worldBottom-120, this.worldBottom-20));
     const seg = { x: this.segmentX, w: segWidth, platformY, obstacles: [], coins: [], spikes: [], portal: null };
@@ -460,6 +459,8 @@ class MapGenerator {
       const spike = { x: sx, w: 28, side: this.rng.next()<0.5? 'floor':'ceiling' };
       seg.spikes.push(spike);
     }
+    // rings
+    if (this.rng.next() < 0.18) {
       const rx = Math.round(this.rng.range(seg.x + seg.w*0.15, seg.x + seg.w*0.85));
       seg.obstacles.push(this.createRing(rx, seg.platformY - 40, this.rng.range(1.0,1.6)));
     }
