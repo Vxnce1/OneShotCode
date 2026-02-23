@@ -14,7 +14,7 @@ Use object pooling for obstacles, coins, portals, and particles
 Reset pooled objects fully before reuse
 Prevent memory leaks
 Support window resizing safely
-Desktop keyboard only (no mobile touch support required
+Desktop keyboard only no mobile touch support required
 Maintain stable FPS.
 COORDINATE SYSTEM
 Fixed world coordinate system
