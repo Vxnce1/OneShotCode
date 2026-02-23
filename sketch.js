@@ -198,23 +198,39 @@ class RhythmAudio {
   }
   initSynth() {
     if (this.kick) return;
-    this.kick = new p5.Oscillator('sine');
-    this.kick.amp(0);
-    this.kick.freq(100);
-    this.kick.start();
-    this.hat = new p5.Noise('white');
-    this.hat.amp(0);
-    this.hat.start();
-    this.amp = new p5.Gain();
-    this.amp.amp(this.volume);
-    this.kick.disconnect(); this.hat.disconnect();
-    this.kick.connect(this.amp); this.hat.connect(this.amp); this.amp.connect();
+    try {
+      // Ensure audio context is in running state
+      const ctx = getAudioContext();
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+      this.kick = new p5.Oscillator('sine');
+      this.kick.amp(0);
+      this.kick.freq(100);
+      this.kick.start();
+      this.hat = new p5.Noise('white');
+      this.hat.amp(0);
+      this.hat.start();
+      this.amp = new p5.Gain();
+      this.amp.amp(this.volume);
+      this.kick.disconnect(); this.hat.disconnect();
+      this.kick.connect(this.amp); this.hat.connect(this.amp); this.amp.connect();
+    } catch(e) {
+      console.warn('Audio synthesis initialization failed:', e);
+    }
   }
   start() {
     userStartAudio();
     this.initSynth();
     this.isPlaying = true;
-    this.nextTime = getAudioContext().currentTime + 0.05;
+    try {
+      const ctx = getAudioContext();
+      if (ctx && ctx.state === 'running') {
+        this.nextTime = ctx.currentTime + 0.05;
+      }
+    } catch(e) {
+      this.nextTime = 0;
+    }
   }
   pause() { this.isPlaying = false; }
   resume() { this.isPlaying = true; }
@@ -222,34 +238,44 @@ class RhythmAudio {
   stop() { this.isPlaying = false; }
   setVolume(v) { this.volume = v; if (this.amp) this.amp.amp(v); }
   update(dt) {
-    if (!this.isPlaying) return;
-    const ctx = getAudioContext();
-    while (this.nextTime <= ctx.currentTime + 0.05) {
-      this.triggerBeat(this.nextTime);
-      this.nextTime += this.beatInterval * 0.5; // hi-hat on off-beats too
+    if (!this.isPlaying || !this.kick || !this.hat) return;
+    try {
+      const ctx = getAudioContext();
+      if (!ctx || ctx.state !== 'running') return;
+      while (this.nextTime <= ctx.currentTime + 0.05) {
+        this.triggerBeat(this.nextTime);
+        this.nextTime += this.beatInterval * 0.5; // hi-hat on off-beats too
+      }
+    } catch(e) {
+      // silently ignore audio errors
     }
   }
   triggerBeat(time) {
     // simple kick every other tick
-    const ctx = getAudioContext();
-    const t = time;
-    // kick on even beats
-    const beatIndex = Math.round((time / this.beatInterval));
-    if (beatIndex % 2 === 0) {
-      this.kick.freq(80);
-      this.kick.amp(0.8, 0.001, t);
-      this.kick.amp(0, 0.18, t + 0.03);
-    } else {
-      // softer click
-      this.kick.freq(140);
-      this.kick.amp(0.25, 0.001, t);
-      this.kick.amp(0, 0.06, t + 0.02);
+    if (!this.kick || !this.hat) return;
+    try {
+      const ctx = getAudioContext();
+      const t = time;
+      // kick on even beats
+      const beatIndex = Math.round((time / this.beatInterval));
+      if (beatIndex % 2 === 0) {
+        this.kick.freq(80);
+        this.kick.amp(0.8, 0.001, t);
+        this.kick.amp(0, 0.18, t + 0.03);
+      } else {
+        // softer click
+        this.kick.freq(140);
+        this.kick.amp(0.25, 0.001, t);
+        this.kick.amp(0, 0.06, t + 0.02);
+      }
+      // hat
+      this.hat.amp(0.08, 0.001, t);
+      this.hat.amp(0, 0.06, t + 0.02);
+      // record beat time for visuals
+      this.lastBeat = time;
+    } catch(e) {
+      // silently ignore audio errors
     }
-    // hat
-    this.hat.amp(0.08, 0.001, t);
-    this.hat.amp(0, 0.06, t + 0.02);
-    // record beat time for visuals
-    this.lastBeat = time;
   }
 }
 
@@ -462,7 +488,7 @@ class MapGenerator {
     }
       const rx = Math.round(this.rng.range(seg.x + seg.w*0.15, seg.x + seg.w*0.85));
       seg.obstacles.push(this.createRing(rx, seg.platformY - 40, this.rng.range(1.0,1.6)));
-    }
+    
     // coins
     if (this.rng.next() < 0.6) {
       const cx = Math.round(this.rng.range(seg.x + seg.w*0.1, seg.x + seg.w*0.9));
