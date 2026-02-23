@@ -10,7 +10,7 @@ const CONFIG = {
   terminalVelocity: 2000, // px/s
   baseSpeed: { easy: 280, medium: 360, hard: 480 }, // px/s
   speedCap: { easy: 420, medium: 600, hard: 900 },
-  bpm: 128,
+  bpm: 140,
   beatPulse: 0.06,
   coyoteTimeMs: 100,
   inputBufferMs: 100,
@@ -74,7 +74,7 @@ class GameManager {
     this.players = [];
     this.seed = 1; // replaced at run start; avoid Math.random usage
     this.rng = new SeededRandom(this.seed);
-    this.difficulty = 'medium';
+    this.difficulty = this.load('difficulty', 'medium');
     this.volume = this.load('volume', 0.8);
     this.saveKeyPrefix = 'fluxrunner_';
     this.coins = this.load('coins', 0);
@@ -300,7 +300,7 @@ class Player {
         this.rotation += 90 * dir;
       }
       // emit jump particles
-      if (this.manager && this.manager.particles) this.manager.particles.emit(this.distance, this.y, 8, this.color);
+      // if (this.manager && this.manager.particles) this.manager.particles.emit(this.distance, this.y, 8, this.color);
       return true;
     }
     return false;
@@ -344,13 +344,19 @@ class Player {
         // reset coyote window (will only be used when walking off)
         this.coyoteUntil = -9999;
         // landing particles (only when falling into landing)
-        if (this.manager && this.manager.particles && !wasGrounded) this.manager.particles.emit(this.distance, this.y+4, 12, [150,220,255]);
-        if (this.manager && this.manager.ripples && !wasGrounded) this.manager.ripples.push({ x: this.distance, y: this.y+6, time: 0, life: 0.6, maxR: 120 });
+        // if (this.manager && this.manager.particles && !wasGrounded) this.manager.particles.emit(this.distance, this.y+4, 12, [150,220,255]);
+        // if (this.manager && this.manager.ripples && !wasGrounded) this.manager.ripples.push({ x: this.distance, y: this.y+6, time: 0, life: 0.6, maxR: 120 });
       } else {
         // if we just left the ground, start coyote window
         if (wasGrounded) this.coyoteUntil = tNow + (CONFIG.coyoteTimeMs/1000);
         this.grounded = false;
       }
+    }
+    // check if fallen off the map
+    if (this.y > height + 50 || this.y < -50) {
+      this.alive = false;
+      world.onPlayerDeath(this);
+      return;
     }
     // update distance
     this.distance += world.speed * dt;
@@ -365,15 +371,15 @@ class Player {
       if (Math.abs(this.rotation) < 0.5) this.rotation = 0;
     }
     // trail particles
-    this.trailTimer = (this.trailTimer || 0) + dt;
-    if (this.trailTimer > 0.06) {
-      this.trailTimer = 0;
-      if (this.manager && this.manager.particles) this.manager.particles.emit(this.distance - 6, this.y, 1, this.color);
-    }
+    // this.trailTimer = (this.trailTimer || 0) + dt;
+    // if (this.trailTimer > 0.06) {
+    //   this.trailTimer = 0;
+    //   if (this.manager && this.manager.particles) this.manager.particles.emit(this.distance - 6, this.y, 1, this.color);
+    // }
   }
   getAABB() {
-    // 5% forgiveness shrink
-    const shw = this.width * 0.05; const shh = this.height * 0.05;
+    // 2% forgiveness shrink
+    const shw = this.width * 0.02; const shh = this.height * 0.02;
     // use world-relative horizontal position: distance
     const worldX = (this.distance || 0);
     return { x: worldX - this.width/2 + shw, y: this.y - this.height/2 + shh, w: this.width - shw*2, h: this.height - shh*2 };
@@ -446,7 +452,6 @@ class MapGenerator {
     }
   }
   pushSegment(force=false) {
-    // Simple procedural segments respecting maxJumpHeight
     const segWidth = Math.round(this.rng.range(300, 700));
     const platformY = Math.round(this.rng.range(this.worldBottom-120, this.worldBottom-20));
     const seg = { x: this.segmentX, w: segWidth, platformY, obstacles: [], coins: [], spikes: [], portal: null };
@@ -459,11 +464,16 @@ class MapGenerator {
     // spikes
     if (this.rng.next() < 0.18) {
       const sx = Math.round(this.rng.range(seg.x + seg.w*0.1, seg.x + seg.w*0.9));
-      const spike = { x: sx, w: 28, side: this.rng.next()<0.5? 'floor':'ceiling' };
-      seg.spikes.push(spike);
+      const spike = { x: sx, w: 28, side: 'floor' };
+      // check spacing
+      let spaced = true;
+      for (const sp of seg.spikes) {
+        if (Math.abs(sp.x - sx) < 50) { spaced = false; break; }
+      }
+      if (spaced) seg.spikes.push(spike);
     }
-    // optionally place a ring to assist the player
-    if (this.rng.next() < 0.5) {
+    // rings
+    if (this.rng.next() < 0.18) {
       const rx = Math.round(this.rng.range(seg.x + seg.w*0.15, seg.x + seg.w*0.85));
       seg.obstacles.push(this.createRing(rx, seg.platformY - 40, this.rng.range(1.0,1.6)));
     }
@@ -471,21 +481,27 @@ class MapGenerator {
     if (this.rng.next() < 0.6) {
       const cx = Math.round(this.rng.range(seg.x + seg.w*0.1, seg.x + seg.w*0.9));
       const coin = this.coinPool.obtain(); coin.x = cx; coin.y = seg.platformY - 40; coin.active = true; coin.collected = false;
-      seg.coins.push(coin);
+      // check if intersects obstacles
+      let intersects = false;
+      for (const ob of seg.obstacles) {
+        if (ob.type === 'pillar' && Math.abs(coin.x - ob.x) < 30 && Math.abs(coin.y - ob.y) < 40) { intersects = true; break; }
+      }
+      if (!intersects) seg.coins.push(coin);
+      else this.coinPool.release(coin);
     }
     // portals (gravity or speed)
-    if (this.rng.next() < 0.08) {
-      seg.portal = this.portalPool.obtain();
-      if (this.rng.next() < 0.6) seg.portal.init('gravity', Math.round(seg.x + seg.w*0.7), platformY - 40);
-      else seg.portal.init('speed', Math.round(seg.x + seg.w*0.7), platformY - 40, this.rng.choice([this.speed*1.25, this.speed*0.75]));
-    }
+    // if (this.rng.next() < 0.08) {
+    //   seg.portal = this.portalPool.obtain();
+    //   if (this.rng.next() < 0.6) seg.portal.init('gravity', Math.round(seg.x + seg.w*0.7), platformY - 40);
+    //   else seg.portal.init('speed', Math.round(seg.x + seg.w*0.7), platformY - 40, this.rng.choice([this.speed*1.25, this.speed*0.75]));
+    // }
     // enforce conservative constraints to keep segments traversable
     this._enforceSegmentConstraints(seg);
     this.segments.push(seg);
     this.segmentX += seg.w; // use possibly-clamped width
   }
   createGap(x, y) { return { type:'gap', x, y, w: Math.round(this.rng.range(80, 160)) }; }
-  createPillar(x, y) { return { type:'pillar', x, y, w:30, h:Math.round(this.rng.range(40,160)) }; }
+  createPillar(x, y) { return { type:'pillar', x, y, w:30, h:Math.round(this.rng.range(40,100)) }; }
   createMoving(x, baseY) {
     return { type: 'moving', x, baseY, w: 100, h: 18, amp: Math.round(this.rng.range(20,80)), period: Math.round(this.rng.range(1.2,2.8)), phase: this.rng.next() };
   }
@@ -643,8 +659,8 @@ class MapGenerator {
     this.segments.push(g); this.segmentX += g.w;
     pushSeg(360, this.worldBottom-80);
     // portal to flip gravity with safe landing
-    const s2 = { x: this.segmentX, w: 320, platformY: this.worldBottom-40, obstacles: [], coins: [], spikes: [], portal: this.portalPool.obtain() };
-    s2.portal.init('gravity', s2.x + 160, s2.platformY - 40); this.segments.push(s2); this.segmentX += s2.w;
+    // const s2 = { x: this.segmentX, w: 320, platformY: this.worldBottom-40, obstacles: [], coins: [], spikes: [], portal: this.portalPool.obtain() };
+    // s2.portal.init('gravity', s2.x + 160, s2.platformY - 40); this.segments.push(s2); this.segmentX += s2.w;
     pushSeg(600, this.worldBottom-40);
   }
   // collision helpers
@@ -683,11 +699,19 @@ class MapGenerator {
     }
     // platform surfaces
     for (const s of this.segments) {
-      // static platform
       const plat = { x: s.x, y: s.platformY, w: s.w, h: 20 };
       if (rectsIntersect(a, plat)) {
         if (player.gravityDir === 1 && player.vy >= 0) { player.y = s.platformY - player.height/2; return true; }
         else if (player.gravityDir === -1 && player.vy <= 0) { player.y = s.platformY + 20 + player.height/2; return true; }
+        // if intersecting but not landing, check if clipping through side
+        const platLeft = plat.x - plat.w/2;
+        const platRight = plat.x + plat.w/2;
+        const playerCenterX = a.x + a.w/2;
+        if (playerCenterX < platLeft || playerCenterX > platRight) {
+          // clipping through side, trigger death
+          this.onPlayerDeath(player);
+          return false;
+        }
       }
       // dynamic obstacles
       if (s.obstacles) for (const ob of s.obstacles) {
@@ -701,6 +725,14 @@ class MapGenerator {
           if (rectsIntersect(a, mb)) {
             if (player.gravityDir === 1 && player.vy >= 0) { player.y = curY - player.height/2; return true; }
             else if (player.gravityDir === -1 && player.vy <= 0) { player.y = curY + ob.h + player.height/2; return true; }
+            // check side clipping
+            const obLeft = ob.x - ob.w/2;
+            const obRight = ob.x + ob.w/2;
+            const playerCenterX = a.x + a.w/2;
+            if (playerCenterX < obLeft || playerCenterX > obRight) {
+              this.onPlayerDeath(player);
+              return false;
+            }
           }
         } else if (ob.type === 'jumppad') {
           const jb = { x: ob.x - ob.w/2, y: ob.y - ob.h/2, w: ob.w, h: ob.h };
@@ -709,11 +741,19 @@ class MapGenerator {
             if (player.grounded) {
               player.vy = CONFIG.initialJumpVelocity * ob.strength * player.gravityDir; // scaled jump
               player.grounded = false;
-              if (this.particlePool) {
-                // find manager particles via player.manager
-                if (player.manager && player.manager.particles) player.manager.particles.emit(player.distance, player.y, 12, [255,200,80]);
-              }
+              // if (this.particlePool) {
+              //   // find manager particles via player.manager
+              //   if (player.manager && player.manager.particles) player.manager.particles.emit(player.distance, player.y, 12, [255,200,80]);
+              // }
               return false; // don't treat as platform
+            }
+            // check side clipping
+            const obLeft = ob.x - ob.w/2;
+            const obRight = ob.x + ob.w/2;
+            const playerCenterX = a.x + a.w/2;
+            if (playerCenterX < obLeft || playerCenterX > obRight) {
+              this.onPlayerDeath(player);
+              return false;
             }
           }
         } else if (ob.type === 'ring') {
@@ -815,12 +855,12 @@ let globalManager;
 function keyPressed() {
   if (!globalManager) return;
   if (key === ' ') {
-    if (globalManager.state === STATES.PLAYING_SINGLE) {
+    if (globalManager.state === STATES.PLAYING_SINGLE || globalManager.state === STATES.TUTORIAL) {
       const tNow = globalManager.runTime; if (!globalManager.players[0].attemptJump(tNow)) globalManager.players[0].inputBufferUntil = tNow + (CONFIG.inputBufferMs/1000);
     }
   }
   if (key === 'W' || key === 'w') {
-    if (globalManager.state === STATES.PLAYING_SINGLE) {
+    if (globalManager.state === STATES.PLAYING_SINGLE || globalManager.state === STATES.TUTORIAL) {
       const tNow = globalManager.runTime; if (!globalManager.players[0].attemptJump(tNow)) globalManager.players[0].inputBufferUntil = tNow + (CONFIG.inputBufferMs/1000);
     } else if (globalManager.state === STATES.PLAYING_MULTI) {
       const tNow = globalManager.runTime; if (!globalManager.players[0].attemptJump(tNow)) globalManager.players[0].inputBufferUntil = tNow + (CONFIG.inputBufferMs/1000);
@@ -840,7 +880,7 @@ function keyPressed() {
             if (rectsIntersect(p.getAABB(), ringBox)) {
               p.vy = CONFIG.initialJumpVelocity * ob.strength * p.gravityDir;
               ob.active = false;
-              if (globalManager.particles) globalManager.particles.emit(p.distance, p.y, 12, [255,255,90]);
+              // if (globalManager.particles) globalManager.particles.emit(p.distance, p.y, 12, [255,255,90]);
             }
           }
         }
@@ -856,6 +896,9 @@ function keyPressed() {
   if (keyCode === ENTER) {
     if (globalManager.state === STATES.MENU) globalManager.startSingle();
     else if (globalManager.state === STATES.GAMEOVER) globalManager.startSingle();
+  }
+  if (key === '2') {
+    if (globalManager.state === STATES.MENU) globalManager.startMulti();
   }
   if (key === 'M' || key === 'm') {
     globalManager.changeState(STATES.MENU);
@@ -897,6 +940,7 @@ function setup() {
     } catch(e) { console.warn('AUTO_SEED_TEST failed', e); }
   }
   rectMode(CENTER); ellipseMode(CENTER); angleMode(DEGREES);
+  textFont('Arial');
   globalManager = new GameManager();
   // prepare menu state
   globalManager.changeState(STATES.MENU);
@@ -941,9 +985,20 @@ function draw() {
 
   // state handling
   if (globalManager.state === STATES.MENU) {
+    if (window.resumeButton) window.resumeButton.hide();
+    if (window.restartButton) window.restartButton.hide();
+    if (window.menuButton) window.menuButton.hide();
+    if (window.restartGameOverButton) window.restartGameOverButton.hide();
+    if (window.menuGameOverButton) window.menuGameOverButton.hide();
     drawMenu();
     if (window.volumeSlider) volumeSlider.show();
   } else if (globalManager.state === STATES.PLAYING_SINGLE || globalManager.state === STATES.PLAYING_MULTI || globalManager.state === STATES.TUTORIAL) {
+    if (window.resumeButton) window.resumeButton.hide();
+    if (window.restartButton) window.restartButton.hide();
+    if (window.menuButton) window.menuButton.hide();
+    if (window.restartGameOverButton) window.restartGameOverButton.hide();
+    if (window.menuGameOverButton) window.menuGameOverButton.hide();
+    if (window.volumeSlider) volumeSlider.hide();
     // update audio
     globalManager.audio.update(dt);
     if (window.volumeSlider) volumeSlider.hide();
@@ -975,25 +1030,27 @@ function draw() {
     // decrease shake timer
     if (globalManager.shakeTimer > 0) globalManager.shakeTimer = Math.max(0, globalManager.shakeTimer - dt);
     // handle slow-motion death pending
-    if (globalManager.deathPending) {
-      globalManager.slowMotion = Math.max(0, globalManager.slowMotion - dt);
-      if (globalManager.slowMotion <= 0) {
-        // finalize game over and save score
-        const player = globalManager.pendingDeathPlayer;
-        const score = Math.floor(player.distance || 0);
-        if (globalManager.state === STATES.PLAYING_MULTI) {
-          const key = 'highscore_multi';
-          const cur = globalManager.load(key, 0);
-          if (score > cur) globalManager.save(key, score);
-        } else {
-          const key = 'highscore';
-          const cur = globalManager.load(key, 0);
-          if (score > cur) globalManager.save(key, score);
-        }
-        globalManager.deathPending = false; globalManager.pendingDeathPlayer = null;
-        globalManager.changeState(STATES.GAMEOVER);
-      }
-    }
+    // if (globalManager.deathPending) {
+    //   globalManager.slowMotion = Math.max(0, globalManager.slowMotion - dt);
+    //   if (globalManager.slowMotion <= 0) {
+    //     // finalize game over and save score
+    //     const player = globalManager.pendingDeathPlayer;
+    //     const score = globalManager.coins;
+    //     if (globalManager.state === STATES.PLAYING_MULTI) {
+    //       const key = 'highscore_multi';
+    //       const cur = globalManager.load(key, 0);
+    //       if (score > cur) globalManager.save(key, score);
+    //     } else {
+    //       const key = 'highscore';
+    //       const cur = globalManager.load(key, 0);
+    //       if (score > cur) globalManager.save(key, score);
+    //     }
+    //     globalManager.deathPending = false; globalManager.pendingDeathPlayer = null;
+    //     globalManager.changeState(STATES.GAMEOVER);
+    //   }
+    // }
+    // world wrapper
+    const world = { checkLethalCollision: (a)=>globalManager.map.checkLethalCollision(a), resolvePlatformCollision: (p)=>globalManager.map.resolvePlatformCollision(p), speed: globalManager.map.speed, onPlayerDeath: (p)=>onPlayerDeath(p)};
     // update players
     const tNow = globalManager.runTime;
     for (let i=0;i<globalManager.players.length;i++) {
@@ -1022,35 +1079,35 @@ function draw() {
         translate(shakeX, shakeY);
         // background for half with subtle beat pulse
         noStroke(); fill(6,8,20); rectMode(CORNER); rect(0,0,width,halfH);
-        const pulse = 0.06 * (0.5 + 0.5 * Math.sin(globalManager.beatPhase * Math.PI * 2));
-        push(); noStroke(); fill(10, 20, 60, 30 + 80 * pulse); rect(0,0,width,halfH); pop();
+        // const pulse = 0.06 * (0.5 + 0.5 * Math.sin(globalManager.beatPhase * Math.PI * 2));
+        // push(); noStroke(); fill(10, 20, 60, 30 + 80 * pulse); rect(0,0,width,halfH); pop();
         const localCamX = camX;
-        noStroke(); fill(0); stroke(255);
+        noStroke(); fill(255); stroke(0);
         // ripples under obstacles
-        for (let ri = globalManager.ripples.length-1; ri >= 0; ri--) {
-          const r = globalManager.ripples[ri]; r.time += dt; if (r.time > r.life) { globalManager.ripples.splice(ri,1); continue; }
-          const rr = r.time / r.life; stroke(120,200,255, 160*(1-rr)); noFill(); strokeWeight(2); ellipse(r.x - localCamX + width/2, r.y, rr * r.maxR);
-        }
+        // for (let ri = globalManager.ripples.length-1; ri >= 0; ri--) {
+        //   const r = globalManager.ripples[ri]; r.time += dt; if (r.time > r.life) { globalManager.ripples.splice(ri,1); continue; }
+        //   const rr = r.time / r.life; stroke(120,200,255, 160*(1-rr)); noFill(); strokeWeight(2); ellipse(r.x - localCamX + width/2, r.y, rr * r.maxR);
+        // }
         for (const s of globalManager.map.segments) {
-          rectMode(CORNER); rect(s.x - localCamX + width/2, s.platformY, s.w, 20);
+          rectMode(CORNER); rect(s.x - localCamX + width/2, s.platformY - i*halfH, s.w, 20);
           if (s.obstacles) for (const ob of s.obstacles) {
-            if (ob.type === 'pillar') rectMode(CENTER), rect(ob.x - localCamX + width/2, ob.y - ob.h/2, ob.w, ob.h);
+            if (ob.type === 'pillar') rectMode(CENTER), rect(ob.x - localCamX + width/2, ob.y - ob.h/2 - i*halfH, ob.w, ob.h);
           }
           if (s.spikes) for (const sp of s.spikes) {
             const sx = sp.x - localCamX + width/2;
-            if (sp.side === 'floor') triangle(sx - sp.w/2, s.platformY, sx + sp.w/2, s.platformY, sx, s.platformY - 28);
-            else triangle(sx - sp.w/2, s.platformY - 20, sx + sp.w/2, s.platformY - 20, sx, s.platformY + 28);
+            if (sp.side === 'floor') triangle(sx - sp.w/2, s.platformY - i*halfH, sx + sp.w/2, s.platformY - i*halfH, sx, s.platformY - 28 - i*halfH);
+            else triangle(sx - sp.w/2, s.platformY - 20 - i*halfH, sx + sp.w/2, s.platformY - 20 - i*halfH, sx, s.platformY + 28 - i*halfH);
           }
           if (s.coins) for (const coin of s.coins) {
             if (!coin.active || coin.collected) continue;
-            const cx = coin.x - localCamX + width/2; const cy = coin.y;
+            const cx = coin.x - localCamX + width/2; const cy = coin.y - i*halfH;
             fill(255,200,0); stroke(255); ellipse(cx, cy, coin.size);
             if (rectsIntersect({ x: coin.x-coin.size/2, y: coin.y-coin.size/2, w: coin.size, h: coin.size }, p.getAABB())) {
               coin.collected = true; coin.active = false; globalManager.addCoins(1); globalManager.map.coinPool.release(coin);
             }
           }
           if (s.portal && s.portal.active) {
-            const px = s.portal.x - localCamX + width/2; const py = s.portal.y;
+            const px = s.portal.x - localCamX + width/2; const py = s.portal.y - i*halfH;
             fill(0,200,255); stroke(255); ellipse(px, py, 28);
             if (rectsIntersect({ x: s.portal.x-14, y: s.portal.y-14, w:28, h:28 }, p.getAABB())) {
               p.queuedPortal = { type: s.portal.type, value: s.portal.value };
@@ -1074,7 +1131,7 @@ function draw() {
       const shakeX = Math.sin(globalManager.runTime * 60) * (globalManager.shakeTimer*6);
       const shakeY = Math.cos(globalManager.runTime * 70) * (globalManager.shakeTimer*3);
       translate(shakeX, shakeY);
-      noStroke(); fill(0); stroke(255);
+      noStroke(); fill(255); stroke(0);
       for (const s of globalManager.map.segments) {
         rectMode(CORNER); rect(s.x - camX + width/2, s.platformY, s.w, 20);
         if (s.obstacles) for (const ob of s.obstacles) {
@@ -1107,6 +1164,8 @@ function draw() {
       }
       // render particles
       if (globalManager.particles) globalManager.particles.render(camX);
+      globalManager.players[0].render(null, width/2, globalManager.players[0].y);
+      renderUI(globalManager);
       pop();
       for (let i=0;i<globalManager.players.length;i++) {
         const p = globalManager.players[i];
@@ -1116,13 +1175,44 @@ function draw() {
       renderUI(globalManager);
     }
   } else if (globalManager.state === STATES.PAUSED) {
-    fill(255); textSize(32); textAlign(CENTER, CENTER); text('PAUSED', width/2, height/2);
+    fill(255); textSize(32); textAlign(CENTER, CENTER); text('PAUSED', width/2, height/2 - 60);
+    if (!window.resumeButton) {
+      window.resumeButton = createButton('Resume');
+      window.resumeButton.position(width/2 - 50, height/2 - 20);
+      window.resumeButton.mousePressed(() => globalManager.pauseToggle());
+    }
+    if (!window.restartButton) {
+      window.restartButton = createButton('Restart');
+      window.restartButton.position(width/2 - 50, height/2 + 10);
+      window.restartButton.mousePressed(() => { globalManager.startSingle(); });
+    }
+    if (!window.menuButton) {
+      window.menuButton = createButton('Menu');
+      window.menuButton.position(width/2 - 50, height/2 + 40);
+      window.menuButton.mousePressed(() => globalManager.changeState(STATES.MENU));
+    }
+    window.resumeButton.show();
+    window.restartButton.show();
+    window.menuButton.show();
     if (window.volumeSlider) volumeSlider.show();
   } else if (globalManager.state === STATES.GAMEOVER) {
     if (window.volumeSlider) volumeSlider.hide();
-    fill(255); textSize(28); textAlign(CENTER, CENTER); text('GAME OVER', width/2, height/2 - 40);
-    textSize(14); text('Press R to restart or M for menu', width/2, height/2 + 8);
-    if (keyIsDown(82)) { globalManager.startSingle(); }
+    fill(255); textSize(28); textAlign(CENTER, CENTER); text('GAME OVER', width/2, height/2 - 60);
+    const score = globalManager.coins;
+    textSize(16); text('High Score: ' + score, width/2, height/2 - 30);
+    text('Coins: ' + globalManager.coins, width/2, height/2 - 10);
+    if (!window.restartGameOverButton) {
+      window.restartGameOverButton = createButton('Restart');
+      window.restartGameOverButton.position(width/2 - 50, height/2 + 10);
+      window.restartGameOverButton.mousePressed(() => globalManager.startSingle());
+    }
+    if (!window.menuGameOverButton) {
+      window.menuGameOverButton = createButton('Menu');
+      window.menuGameOverButton.position(width/2 - 50, height/2 + 40);
+      window.menuGameOverButton.mousePressed(() => globalManager.changeState(STATES.MENU));
+    }
+    window.restartGameOverButton.show();
+    window.menuGameOverButton.show();
   }
   // Shop / Customize overlays
   if (globalManager.state === STATES.SHOP) drawShop(globalManager);
@@ -1133,7 +1223,7 @@ function draw() {
 function drawMenu() {
   push(); textAlign(CENTER, CENTER); fill(255);
   textSize(48); text('Flux Runner', width/2, height*0.25);
-  textSize(18); text('Press Enter to Start (Single) or M for Menu', width/2, height*0.35);
+  textSize(18); text('Press Enter to Start (Single) or 2 for Multiplayer', width/2, height*0.35);
   textSize(14); text('W / Space to jump. P to pause.', width/2, height*0.42);
   textSize(12); text('Press D to run deterministic seed-safety test (dev)', width/2, height*0.48);
   if (globalManager && globalManager.debugTestResults) {
@@ -1145,7 +1235,7 @@ function drawMenu() {
     }
     textAlign(CENTER, CENTER);
   }
-  textSize(12); text('Press S for Settings', width/2, height*0.52);
+  textSize(12); text('Press S for Settings, T for Tutorial', width/2, height*0.52);
   pop();
 }
 
@@ -1222,13 +1312,23 @@ function drawCustomize(manager) {
 }
 
 function onPlayerDeath(player) {
-  // freeze audio and start slow-motion/death visuals; finalize game-over after timer
+  // freeze audio and trigger game over immediately
   globalManager.audio.pause();
-  globalManager.deathPending = true;
-  globalManager.pendingDeathPlayer = player;
-  globalManager.slowMotion = 0.5;
-  globalManager.shakeTimer = 0.45;
-  if (globalManager.particles) globalManager.particles.emit(player.distance, player.y, 40, [255,90,120]);
+  if (globalManager.state === STATES.PLAYING_MULTI) {
+    for (const p of globalManager.players) p.alive = false;
+  }
+  // save score
+  const score = globalManager.coins;
+  if (globalManager.state === STATES.PLAYING_MULTI) {
+    const key = 'highscore_multi';
+    const cur = globalManager.load(key, 0);
+    if (score > cur) globalManager.save(key, score);
+  } else {
+    const key = 'highscore';
+    const cur = globalManager.load(key, 0);
+    if (score > cur) globalManager.save(key, score);
+  }
+  globalManager.changeState(STATES.GAMEOVER);
 }
 
 function keyReleased() {}
@@ -1243,19 +1343,6 @@ function mousePressed() {
       if (globalManager.buyShape(it.name, it.price)) globalManager.pendingPurchase = null;
       else globalManager.pendingPurchase = null; // dismiss
       return;
-    }
-    // detect settings difficulty clicks
-    if (globalManager.state === STATES.SETTINGS) {
-      // difficulty buttons
-      const bw = 120; const dy = 100;
-      for (let i=0;i<3;i++){
-        const x = width/2 - (bw+12) + i*(bw+12); const y = dy;
-        if (mX >= x && mX <= x+bw && mY >= y && mY <= y+40) {
-          const opts = ['easy','medium','hard']; globalManager.setDifficulty(opts[i]); return;
-        }
-      }
-      // click outside closes settings
-      if (!(mX > width/2-260 && mX < width/2+260 && mY > 60 && mY < height-60)) { globalManager.changeState(STATES.MENU); return; }
     }
     // detect clicks on shop items
     const items = [{name:'circle',price:0},{name:'square',price:0},{name:'x',price:50}];
@@ -1272,6 +1359,18 @@ function mousePressed() {
         }
       }
     }
+  }
+  if (globalManager.state === STATES.SETTINGS) {
+    // difficulty buttons
+    const bw = 120; const dy = 100;
+    for (let i=0;i<3;i++){
+      const x = width/2 - (bw+12) + i*(bw+12); const y = dy;
+      if (mX >= x && mX <= x+bw && mY >= y && mY <= y+40) {
+        const opts = ['easy','medium','hard']; globalManager.setDifficulty(opts[i]); return;
+      }
+    }
+    // click outside closes settings
+    if (!(mX > width/2-260 && mX < width/2+260 && mY > 60 && mY < height-60)) { globalManager.changeState(STATES.MENU); return; }
   } else if (globalManager.state === STATES.CUSTOMIZE) {
     // palette
     const palette = [[255,50,180],[0,200,255],[120,255,80],[255,160,0],[180,90,255]];
