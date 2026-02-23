@@ -502,7 +502,7 @@ class MapGenerator {
     if (this.rng.next() < 0.18) {
       const rx = Math.round(this.rng.range(seg.x + seg.w*0.15, seg.x + seg.w*0.85));
       seg.obstacles.push(this.createRing(rx, seg.platformY - 40, this.rng.range(1.0,1.6)));
-    
+    }
     // coins
     if (this.rng.next() < 0.6) {
       const cx = Math.round(this.rng.range(seg.x + seg.w*0.1, seg.x + seg.w*0.9));
