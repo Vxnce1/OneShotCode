@@ -198,11 +198,17 @@ class RhythmAudio {
   initSynth() {
     if (this.kick) return;
     try {
+      // Check if p5.sound is available
+      if (!window.p5 || !p5.Oscillator) return;
+      
       // Ensure audio context is in running state
       const ctx = getAudioContext();
+      if (!ctx) return;
+      
       if (ctx.state === 'suspended') {
         ctx.resume().catch(() => {});
       }
+      
       this.kick = new p5.Oscillator('sine');
       this.kick.amp(0);
       this.kick.freq(100);
@@ -215,7 +221,10 @@ class RhythmAudio {
       this.kick.disconnect(); this.hat.disconnect();
       this.kick.connect(this.amp); this.hat.connect(this.amp); this.amp.connect();
     } catch(e) {
-      console.warn('Audio synthesis initialization failed:', e);
+      // Silently fail - audio is not critical to game function
+      this.kick = null;
+      this.hat = null;
+      this.amp = null;
     }
   }
   start() {
