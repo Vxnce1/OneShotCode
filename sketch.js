@@ -159,7 +159,6 @@ class GameManager {
     this.changeState(STATES.TUTORIAL);
   }
 
-  addCoins(n) { this.coins = (this.coins||0) + n; this.save('coins', this.coins); }
   pauseToggle() {
     if (this.state === STATES.PLAYING_SINGLE || this.state === STATES.PLAYING_MULTI) {
       this.prevState = this.state;
@@ -314,7 +313,10 @@ class Player {
       if (p.type === 'gravity') {
         this.gravityDir *= -1;
       } else if (p.type === 'speed') {
-        world.map.speed = clamp(p.value, world.map.speed, world.map.speed);
+        // world is actually the MapGenerator instance; update its speed directly
+        // clamp to a reasonable range (0 .. speedCap if available)
+        const cap = (world.speedCap !== undefined) ? world.speedCap : world.speed;
+        world.speed = clamp(p.value, 0, cap);
       }
       this.queuedPortal = null;
     }
@@ -460,6 +462,8 @@ class MapGenerator {
       const spike = { x: sx, w: 28, side: this.rng.next()<0.5? 'floor':'ceiling' };
       seg.spikes.push(spike);
     }
+    // optionally place a ring to assist the player
+    if (this.rng.next() < 0.5) {
       const rx = Math.round(this.rng.range(seg.x + seg.w*0.15, seg.x + seg.w*0.85));
       seg.obstacles.push(this.createRing(rx, seg.platformY - 40, this.rng.range(1.0,1.6)));
     }
@@ -990,8 +994,6 @@ function draw() {
         globalManager.changeState(STATES.GAMEOVER);
       }
     }
-    // world wrapper
-    const world = { checkLethalCollision: (a)=>globalManager.map.checkLethalCollision(a), resolvePlatformCollision: (p)=>globalManager.map.resolvePlatformCollision(p), speed: globalManager.map.speed, onPlayerDeath: (p)=>onPlayerDeath(p)};
     // update players
     const tNow = globalManager.runTime;
     for (let i=0;i<globalManager.players.length;i++) {
