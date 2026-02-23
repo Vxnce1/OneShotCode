@@ -136,8 +136,13 @@ class GameManager {
     }
   }
   setupAudio() {
-    // audio removed; stub implementation so calls are safe
-    this.audio = { start:()=>{}, pause:()=>{}, resume:()=>{}, update:()=>{}, setVolume:()=>{} };
+    // initialize rhythm audio with appropriate bpm and volume
+    try {
+      this.audio = new RhythmAudio(CONFIG.bpm, this.volume);
+    } catch(e) {
+      // fallback to stub if something goes wrong
+      this.audio = { start:()=>{}, pause:()=>{}, resume:()=>{}, update:()=>{}, setVolume:()=>{} };
+    }
   }
   setDifficulty(d) {
     this.difficulty = d; this.save('difficulty', d);
@@ -211,9 +216,6 @@ class GameManager {
 }
 
 /* ======= Rhythm Audio (synth loop) ======= */
-<<<<<<< HEAD
-/* audio code removed; stubbed out in GameManager.setupAudio */
-=======
 class RhythmAudio {
   constructor(bpm, initialVolume=0.8) {
     this.bpm = bpm;
@@ -315,7 +317,6 @@ class RhythmAudio {
     }
   }
 }
->>>>>>> ac0e22cd7fe45a97b17746ef84a5ecc1a7f6ace9
 
 /* ======= Player ======= */
 class Player {
