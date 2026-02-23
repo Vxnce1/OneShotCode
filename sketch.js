@@ -301,7 +301,7 @@ class Player {
         this.rotation += 90 * dir;
       }
       // emit jump particles
-      if (this.manager && this.manager.particles) this.manager.particles.emit(this.distance, this.y, 8, this.color);
+      // if (this.manager && this.manager.particles) this.manager.particles.emit(this.distance, this.y, 8, this.color);
       return true;
     }
     return false;
@@ -342,8 +342,8 @@ class Player {
         // reset coyote window (will only be used when walking off)
         this.coyoteUntil = -9999;
         // landing particles (only when falling into landing)
-        if (this.manager && this.manager.particles && !wasGrounded) this.manager.particles.emit(this.distance, this.y+4, 12, [150,220,255]);
-        if (this.manager && this.manager.ripples && !wasGrounded) this.manager.ripples.push({ x: this.distance, y: this.y+6, time: 0, life: 0.6, maxR: 120 });
+        // if (this.manager && this.manager.particles && !wasGrounded) this.manager.particles.emit(this.distance, this.y+4, 12, [150,220,255]);
+        // if (this.manager && this.manager.ripples && !wasGrounded) this.manager.ripples.push({ x: this.distance, y: this.y+6, time: 0, life: 0.6, maxR: 120 });
       } else {
         // if we just left the ground, start coyote window
         if (wasGrounded) this.coyoteUntil = tNow + (CONFIG.coyoteTimeMs/1000);
@@ -369,11 +369,11 @@ class Player {
       if (Math.abs(this.rotation) < 0.5) this.rotation = 0;
     }
     // trail particles
-    this.trailTimer = (this.trailTimer || 0) + dt;
-    if (this.trailTimer > 0.06) {
-      this.trailTimer = 0;
-      if (this.manager && this.manager.particles) this.manager.particles.emit(this.distance - 6, this.y, 1, this.color);
-    }
+    // this.trailTimer = (this.trailTimer || 0) + dt;
+    // if (this.trailTimer > 0.06) {
+    //   this.trailTimer = 0;
+    //   if (this.manager && this.manager.particles) this.manager.particles.emit(this.distance - 6, this.y, 1, this.color);
+    // }
   }
   getAABB() {
     // 2% forgiveness shrink
@@ -657,8 +657,8 @@ class MapGenerator {
     this.segments.push(g); this.segmentX += g.w;
     pushSeg(360, this.worldBottom-80);
     // portal to flip gravity with safe landing
-    const s2 = { x: this.segmentX, w: 320, platformY: this.worldBottom-40, obstacles: [], coins: [], spikes: [], portal: this.portalPool.obtain() };
-    s2.portal.init('gravity', s2.x + 160, s2.platformY - 40); this.segments.push(s2); this.segmentX += s2.w;
+    // const s2 = { x: this.segmentX, w: 320, platformY: this.worldBottom-40, obstacles: [], coins: [], spikes: [], portal: this.portalPool.obtain() };
+    // s2.portal.init('gravity', s2.x + 160, s2.platformY - 40); this.segments.push(s2); this.segmentX += s2.w;
     pushSeg(600, this.worldBottom-40);
   }
   // collision helpers
@@ -739,10 +739,10 @@ class MapGenerator {
             if (player.grounded) {
               player.vy = CONFIG.initialJumpVelocity * ob.strength * player.gravityDir; // scaled jump
               player.grounded = false;
-              if (this.particlePool) {
-                // find manager particles via player.manager
-                if (player.manager && player.manager.particles) player.manager.particles.emit(player.distance, player.y, 12, [255,200,80]);
-              }
+              // if (this.particlePool) {
+              //   // find manager particles via player.manager
+              //   if (player.manager && player.manager.particles) player.manager.particles.emit(player.distance, player.y, 12, [255,200,80]);
+              // }
               return false; // don't treat as platform
             }
             // check side clipping
@@ -878,7 +878,7 @@ function keyPressed() {
             if (rectsIntersect(p.getAABB(), ringBox)) {
               p.vy = CONFIG.initialJumpVelocity * ob.strength * p.gravityDir;
               ob.active = false;
-              if (globalManager.particles) globalManager.particles.emit(p.distance, p.y, 12, [255,255,90]);
+              // if (globalManager.particles) globalManager.particles.emit(p.distance, p.y, 12, [255,255,90]);
             }
           }
         }
@@ -1028,25 +1028,25 @@ function draw() {
     // decrease shake timer
     if (globalManager.shakeTimer > 0) globalManager.shakeTimer = Math.max(0, globalManager.shakeTimer - dt);
     // handle slow-motion death pending
-    if (globalManager.deathPending) {
-      globalManager.slowMotion = Math.max(0, globalManager.slowMotion - dt);
-      if (globalManager.slowMotion <= 0) {
-        // finalize game over and save score
-        const player = globalManager.pendingDeathPlayer;
-        const score = globalManager.coins;
-        if (globalManager.state === STATES.PLAYING_MULTI) {
-          const key = 'highscore_multi';
-          const cur = globalManager.load(key, 0);
-          if (score > cur) globalManager.save(key, score);
-        } else {
-          const key = 'highscore';
-          const cur = globalManager.load(key, 0);
-          if (score > cur) globalManager.save(key, score);
-        }
-        globalManager.deathPending = false; globalManager.pendingDeathPlayer = null;
-        globalManager.changeState(STATES.GAMEOVER);
-      }
-    }
+    // if (globalManager.deathPending) {
+    //   globalManager.slowMotion = Math.max(0, globalManager.slowMotion - dt);
+    //   if (globalManager.slowMotion <= 0) {
+    //     // finalize game over and save score
+    //     const player = globalManager.pendingDeathPlayer;
+    //     const score = globalManager.coins;
+    //     if (globalManager.state === STATES.PLAYING_MULTI) {
+    //       const key = 'highscore_multi';
+    //       const cur = globalManager.load(key, 0);
+    //       if (score > cur) globalManager.save(key, score);
+    //     } else {
+    //       const key = 'highscore';
+    //       const cur = globalManager.load(key, 0);
+    //       if (score > cur) globalManager.save(key, score);
+    //     }
+    //     globalManager.deathPending = false; globalManager.pendingDeathPlayer = null;
+    //     globalManager.changeState(STATES.GAMEOVER);
+    //   }
+    // }
     // world wrapper
     const world = { checkLethalCollision: (a)=>globalManager.map.checkLethalCollision(a), resolvePlatformCollision: (p)=>globalManager.map.resolvePlatformCollision(p), speed: globalManager.map.speed, onPlayerDeath: (p)=>onPlayerDeath(p)};
     // update players
@@ -1082,30 +1082,30 @@ function draw() {
         const localCamX = camX;
         noStroke(); fill(255); stroke(0);
         // ripples under obstacles
-        for (let ri = globalManager.ripples.length-1; ri >= 0; ri--) {
-          const r = globalManager.ripples[ri]; r.time += dt; if (r.time > r.life) { globalManager.ripples.splice(ri,1); continue; }
-          const rr = r.time / r.life; stroke(120,200,255, 160*(1-rr)); noFill(); strokeWeight(2); ellipse(r.x - localCamX + width/2, r.y, rr * r.maxR);
-        }
+        // for (let ri = globalManager.ripples.length-1; ri >= 0; ri--) {
+        //   const r = globalManager.ripples[ri]; r.time += dt; if (r.time > r.life) { globalManager.ripples.splice(ri,1); continue; }
+        //   const rr = r.time / r.life; stroke(120,200,255, 160*(1-rr)); noFill(); strokeWeight(2); ellipse(r.x - localCamX + width/2, r.y, rr * r.maxR);
+        // }
         for (const s of globalManager.map.segments) {
-          rectMode(CORNER); rect(s.x - localCamX + width/2, s.platformY, s.w, 20);
+          rectMode(CORNER); rect(s.x - localCamX + width/2, s.platformY - i*halfH, s.w, 20);
           if (s.obstacles) for (const ob of s.obstacles) {
-            if (ob.type === 'pillar') rectMode(CENTER), rect(ob.x - localCamX + width/2, ob.y - ob.h/2, ob.w, ob.h);
+            if (ob.type === 'pillar') rectMode(CENTER), rect(ob.x - localCamX + width/2, ob.y - ob.h/2 - i*halfH, ob.w, ob.h);
           }
           if (s.spikes) for (const sp of s.spikes) {
             const sx = sp.x - localCamX + width/2;
-            if (sp.side === 'floor') triangle(sx - sp.w/2, s.platformY, sx + sp.w/2, s.platformY, sx, s.platformY - 28);
-            else triangle(sx - sp.w/2, s.platformY - 20, sx + sp.w/2, s.platformY - 20, sx, s.platformY + 28);
+            if (sp.side === 'floor') triangle(sx - sp.w/2, s.platformY - i*halfH, sx + sp.w/2, s.platformY - i*halfH, sx, s.platformY - 28 - i*halfH);
+            else triangle(sx - sp.w/2, s.platformY - 20 - i*halfH, sx + sp.w/2, s.platformY - 20 - i*halfH, sx, s.platformY + 28 - i*halfH);
           }
           if (s.coins) for (const coin of s.coins) {
             if (!coin.active || coin.collected) continue;
-            const cx = coin.x - localCamX + width/2; const cy = coin.y;
+            const cx = coin.x - localCamX + width/2; const cy = coin.y - i*halfH;
             fill(255,200,0); stroke(255); ellipse(cx, cy, coin.size);
             if (rectsIntersect({ x: coin.x-coin.size/2, y: coin.y-coin.size/2, w: coin.size, h: coin.size }, p.getAABB())) {
               coin.collected = true; coin.active = false; globalManager.addCoins(1); globalManager.map.coinPool.release(coin);
             }
           }
           if (s.portal && s.portal.active) {
-            const px = s.portal.x - localCamX + width/2; const py = s.portal.y;
+            const px = s.portal.x - localCamX + width/2; const py = s.portal.y - i*halfH;
             fill(0,200,255); stroke(255); ellipse(px, py, 28);
             if (rectsIntersect({ x: s.portal.x-14, y: s.portal.y-14, w:28, h:28 }, p.getAABB())) {
               p.queuedPortal = { type: s.portal.type, value: s.portal.value };
@@ -1310,16 +1310,23 @@ function drawCustomize(manager) {
 }
 
 function onPlayerDeath(player) {
-  // freeze audio and start slow-motion/death visuals; finalize game-over after timer
+  // freeze audio and trigger game over immediately
   globalManager.audio.pause();
-  globalManager.deathPending = true;
-  globalManager.pendingDeathPlayer = player;
-  globalManager.slowMotion = 0.5;
-  globalManager.shakeTimer = 0.45;
   if (globalManager.state === STATES.PLAYING_MULTI) {
     for (const p of globalManager.players) p.alive = false;
   }
-  if (globalManager.particles) globalManager.particles.emit(player.distance, player.y, 40, [255,90,120]);
+  // save score
+  const score = globalManager.coins;
+  if (globalManager.state === STATES.PLAYING_MULTI) {
+    const key = 'highscore_multi';
+    const cur = globalManager.load(key, 0);
+    if (score > cur) globalManager.save(key, score);
+  } else {
+    const key = 'highscore';
+    const cur = globalManager.load(key, 0);
+    if (score > cur) globalManager.save(key, score);
+  }
+  globalManager.changeState(STATES.GAMEOVER);
 }
 
 function keyReleased() {}
