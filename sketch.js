@@ -10,7 +10,7 @@ const CONFIG = {
   terminalVelocity: 2000, // px/s
   baseSpeed: { easy: 280, medium: 360, hard: 480 }, // px/s
   speedCap: { easy: 420, medium: 600, hard: 900 },
-  bpm: 128,
+  bpm: 140,
   beatPulse: 0.06,
   coyoteTimeMs: 100,
   inputBufferMs: 100,
@@ -74,7 +74,7 @@ class GameManager {
     this.players = [];
     this.seed = 1; // replaced at run start; avoid Math.random usage
     this.rng = new SeededRandom(this.seed);
-    this.difficulty = 'medium';
+    this.difficulty = this.load('difficulty', 'medium');
     this.volume = this.load('volume', 0.8);
     this.saveKeyPrefix = 'fluxrunner_';
     this.coins = this.load('coins', 0);
@@ -350,6 +350,12 @@ class Player {
         this.grounded = false;
       }
     }
+    // check if fallen off the map
+    if (this.y > height + 50 || this.y < -50) {
+      this.alive = false;
+      world.onPlayerDeath(this);
+      return;
+    }
     // update distance
     this.distance += world.speed * dt;
     // if we landed and have an input buffered, trigger jump
@@ -457,7 +463,12 @@ class MapGenerator {
     if (this.rng.next() < 0.18) {
       const sx = Math.round(this.rng.range(seg.x + seg.w*0.1, seg.x + seg.w*0.9));
       const spike = { x: sx, w: 28, side: this.rng.next()<0.5? 'floor':'ceiling' };
-      seg.spikes.push(spike);
+      // check spacing
+      let spaced = true;
+      for (const sp of seg.spikes) {
+        if (Math.abs(sp.x - sx) < 50) { spaced = false; break; }
+      }
+      if (spaced) seg.spikes.push(spike);
     }
     // rings
     if (this.rng.next() < 0.18) {
@@ -468,21 +479,27 @@ class MapGenerator {
     if (this.rng.next() < 0.6) {
       const cx = Math.round(this.rng.range(seg.x + seg.w*0.1, seg.x + seg.w*0.9));
       const coin = this.coinPool.obtain(); coin.x = cx; coin.y = seg.platformY - 40; coin.active = true; coin.collected = false;
-      seg.coins.push(coin);
+      // check if intersects obstacles
+      let intersects = false;
+      for (const ob of seg.obstacles) {
+        if (ob.type === 'pillar' && Math.abs(coin.x - ob.x) < 30 && Math.abs(coin.y - ob.y) < 40) { intersects = true; break; }
+      }
+      if (!intersects) seg.coins.push(coin);
+      else this.coinPool.release(coin);
     }
     // portals (gravity or speed)
-    if (this.rng.next() < 0.08) {
-      seg.portal = this.portalPool.obtain();
-      if (this.rng.next() < 0.6) seg.portal.init('gravity', Math.round(seg.x + seg.w*0.7), platformY - 40);
-      else seg.portal.init('speed', Math.round(seg.x + seg.w*0.7), platformY - 40, this.rng.choice([this.speed*1.25, this.speed*0.75]));
-    }
+    // if (this.rng.next() < 0.08) {
+    //   seg.portal = this.portalPool.obtain();
+    //   if (this.rng.next() < 0.6) seg.portal.init('gravity', Math.round(seg.x + seg.w*0.7), platformY - 40);
+    //   else seg.portal.init('speed', Math.round(seg.x + seg.w*0.7), platformY - 40, this.rng.choice([this.speed*1.25, this.speed*0.75]));
+    // }
     // enforce conservative constraints to keep segments traversable
     this._enforceSegmentConstraints(seg);
     this.segments.push(seg);
     this.segmentX += seg.w; // use possibly-clamped width
   }
   createGap(x, y) { return { type:'gap', x, y, w: Math.round(this.rng.range(80, 160)) }; }
-  createPillar(x, y) { return { type:'pillar', x, y, w:30, h:Math.round(this.rng.range(40,160)) }; }
+  createPillar(x, y) { return { type:'pillar', x, y, w:30, h:Math.round(this.rng.range(40,100)) }; }
   createMoving(x, baseY) {
     return { type: 'moving', x, baseY, w: 100, h: 18, amp: Math.round(this.rng.range(20,80)), period: Math.round(this.rng.range(1.2,2.8)), phase: this.rng.next() };
   }
@@ -854,6 +871,9 @@ function keyPressed() {
     if (globalManager.state === STATES.MENU) globalManager.startSingle();
     else if (globalManager.state === STATES.GAMEOVER) globalManager.startSingle();
   }
+  if (key === '2') {
+    if (globalManager.state === STATES.MENU) globalManager.startMulti();
+  }
   if (key === 'M' || key === 'm') {
     globalManager.changeState(STATES.MENU);
   }
@@ -894,6 +914,7 @@ function setup() {
     } catch(e) { console.warn('AUTO_SEED_TEST failed', e); }
   }
   rectMode(CENTER); ellipseMode(CENTER); angleMode(DEGREES);
+  textFont('Arial');
   globalManager = new GameManager();
   // prepare menu state
   globalManager.changeState(STATES.MENU);
@@ -941,6 +962,12 @@ function draw() {
     drawMenu();
     if (window.volumeSlider) volumeSlider.show();
   } else if (globalManager.state === STATES.PLAYING_SINGLE || globalManager.state === STATES.PLAYING_MULTI || globalManager.state === STATES.TUTORIAL) {
+    if (window.resumeButton) window.resumeButton.hide();
+    if (window.restartButton) window.restartButton.hide();
+    if (window.menuButton) window.menuButton.hide();
+    if (window.restartGameOverButton) window.restartGameOverButton.hide();
+    if (window.menuGameOverButton) window.menuGameOverButton.hide();
+    if (window.volumeSlider) volumeSlider.hide();
     // update audio
     globalManager.audio.update(dt);
     if (window.volumeSlider) volumeSlider.hide();
@@ -1021,8 +1048,8 @@ function draw() {
         translate(shakeX, shakeY);
         // background for half with subtle beat pulse
         noStroke(); fill(6,8,20); rectMode(CORNER); rect(0,0,width,halfH);
-        const pulse = 0.06 * (0.5 + 0.5 * Math.sin(globalManager.beatPhase * Math.PI * 2));
-        push(); noStroke(); fill(10, 20, 60, 30 + 80 * pulse); rect(0,0,width,halfH); pop();
+        // const pulse = 0.06 * (0.5 + 0.5 * Math.sin(globalManager.beatPhase * Math.PI * 2));
+        // push(); noStroke(); fill(10, 20, 60, 30 + 80 * pulse); rect(0,0,width,halfH); pop();
         const localCamX = camX;
         noStroke(); fill(0); stroke(255);
         // ripples under obstacles
@@ -1115,13 +1142,44 @@ function draw() {
       renderUI(globalManager);
     }
   } else if (globalManager.state === STATES.PAUSED) {
-    fill(255); textSize(32); textAlign(CENTER, CENTER); text('PAUSED', width/2, height/2);
+    fill(255); textSize(32); textAlign(CENTER, CENTER); text('PAUSED', width/2, height/2 - 60);
+    if (!window.resumeButton) {
+      window.resumeButton = createButton('Resume');
+      window.resumeButton.position(width/2 - 50, height/2 - 20);
+      window.resumeButton.mousePressed(() => globalManager.pauseToggle());
+    }
+    if (!window.restartButton) {
+      window.restartButton = createButton('Restart');
+      window.restartButton.position(width/2 - 50, height/2 + 10);
+      window.restartButton.mousePressed(() => { globalManager.startSingle(); });
+    }
+    if (!window.menuButton) {
+      window.menuButton = createButton('Menu');
+      window.menuButton.position(width/2 - 50, height/2 + 40);
+      window.menuButton.mousePressed(() => globalManager.changeState(STATES.MENU));
+    }
+    window.resumeButton.show();
+    window.restartButton.show();
+    window.menuButton.show();
     if (window.volumeSlider) volumeSlider.show();
   } else if (globalManager.state === STATES.GAMEOVER) {
     if (window.volumeSlider) volumeSlider.hide();
-    fill(255); textSize(28); textAlign(CENTER, CENTER); text('GAME OVER', width/2, height/2 - 40);
-    textSize(14); text('Press R to restart or M for menu', width/2, height/2 + 8);
-    if (keyIsDown(82)) { globalManager.startSingle(); }
+    fill(255); textSize(28); textAlign(CENTER, CENTER); text('GAME OVER', width/2, height/2 - 60);
+    const score = Math.floor(globalManager.players[0].distance || 0);
+    textSize(16); text('Score: ' + score, width/2, height/2 - 30);
+    text('Coins: ' + globalManager.coins, width/2, height/2 - 10);
+    if (!window.restartGameOverButton) {
+      window.restartGameOverButton = createButton('Restart');
+      window.restartGameOverButton.position(width/2 - 50, height/2 + 10);
+      window.restartGameOverButton.mousePressed(() => globalManager.startSingle());
+    }
+    if (!window.menuGameOverButton) {
+      window.menuGameOverButton = createButton('Menu');
+      window.menuGameOverButton.position(width/2 - 50, height/2 + 40);
+      window.menuGameOverButton.mousePressed(() => globalManager.changeState(STATES.MENU));
+    }
+    window.restartGameOverButton.show();
+    window.menuGameOverButton.show();
   }
   // Shop / Customize overlays
   if (globalManager.state === STATES.SHOP) drawShop(globalManager);
@@ -1132,7 +1190,7 @@ function draw() {
 function drawMenu() {
   push(); textAlign(CENTER, CENTER); fill(255);
   textSize(48); text('Flux Runner', width/2, height*0.25);
-  textSize(18); text('Press Enter to Start (Single) or M for Menu', width/2, height*0.35);
+  textSize(18); text('Press Enter to Start (Single) or 2 for Multiplayer', width/2, height*0.35);
   textSize(14); text('W / Space to jump. P to pause.', width/2, height*0.42);
   textSize(12); text('Press D to run deterministic seed-safety test (dev)', width/2, height*0.48);
   if (globalManager && globalManager.debugTestResults) {
@@ -1144,7 +1202,7 @@ function drawMenu() {
     }
     textAlign(CENTER, CENTER);
   }
-  textSize(12); text('Press S for Settings', width/2, height*0.52);
+  textSize(12); text('Press S for Settings, T for Tutorial', width/2, height*0.52);
   pop();
 }
 
@@ -1243,19 +1301,6 @@ function mousePressed() {
       else globalManager.pendingPurchase = null; // dismiss
       return;
     }
-    // detect settings difficulty clicks
-    if (globalManager.state === STATES.SETTINGS) {
-      // difficulty buttons
-      const bw = 120; const dy = 100;
-      for (let i=0;i<3;i++){
-        const x = width/2 - (bw+12) + i*(bw+12); const y = dy;
-        if (mX >= x && mX <= x+bw && mY >= y && mY <= y+40) {
-          const opts = ['easy','medium','hard']; globalManager.setDifficulty(opts[i]); return;
-        }
-      }
-      // click outside closes settings
-      if (!(mX > width/2-260 && mX < width/2+260 && mY > 60 && mY < height-60)) { globalManager.changeState(STATES.MENU); return; }
-    }
     // detect clicks on shop items
     const items = [{name:'circle',price:0},{name:'square',price:0},{name:'x',price:50}];
     const startX = width/2 - 200; const y = 120; const w = 120; const h = 120; const gap = 40;
@@ -1271,6 +1316,18 @@ function mousePressed() {
         }
       }
     }
+  }
+  if (globalManager.state === STATES.SETTINGS) {
+    // difficulty buttons
+    const bw = 120; const dy = 100;
+    for (let i=0;i<3;i++){
+      const x = width/2 - (bw+12) + i*(bw+12); const y = dy;
+      if (mX >= x && mX <= x+bw && mY >= y && mY <= y+40) {
+        const opts = ['easy','medium','hard']; globalManager.setDifficulty(opts[i]); return;
+      }
+    }
+    // click outside closes settings
+    if (!(mX > width/2-260 && mX < width/2+260 && mY > 60 && mY < height-60)) { globalManager.changeState(STATES.MENU); return; }
   } else if (globalManager.state === STATES.CUSTOMIZE) {
     // palette
     const palette = [[255,50,180],[0,200,255],[120,255,80],[255,160,0],[180,90,255]];
