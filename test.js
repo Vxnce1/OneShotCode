@@ -64,7 +64,7 @@ class MapGenerator {
     this.segmentX = 0;
     this.pool = new Pool(()=> ({})); // dummy
     this.coinPool = new Pool(()=> ({}));
-    this.portalPool = new Pool(()=> ({}));
+    // portals removed for tests
     this.particlePool = new Pool(()=> ({}));
     this.worldTop = 60;
     this.worldBottom = height - 40;
@@ -96,7 +96,7 @@ class MapGenerator {
   pushSegment(force=false) {
     const segWidth = Math.round(this.rng.range(300, 700));
     const platformY = Math.round(this.rng.range(this.worldBottom-120, this.worldBottom-20));
-    const seg = { x: this.segmentX, w: segWidth, platformY, obstacles: [], coins: [], spikes: [], portal: null };
+    const seg = { x: this.segmentX, w: segWidth, platformY, obstacles: [], coins: [], spikes: [] };
     // obstacles as pillars or gaps
     if (this.rng.next() < 0.6) {
       const type = this.rng.next() < 0.5 ? 'gap' : 'pillar';
@@ -120,19 +120,14 @@ class MapGenerator {
       const coin = this.coinPool.obtain(); coin.x = cx; coin.y = seg.platformY - 40; coin.active = true; coin.collected = false;
       seg.coins.push(coin);
     }
-    // portals (gravity or speed)
-    if (this.rng.next() < 0.08) {
-      seg.portal = this.portalPool.obtain();
-      if (this.rng.next() < 0.6) seg.portal.init('gravity', Math.round(seg.x + seg.w*0.7), platformY - 40);
-      else seg.portal.init('speed', Math.round(seg.x + seg.w*0.7), platformY - 40, this.rng.choice([this.speed*1.25, this.speed*0.75]));
-    }
+    // portals disabled
     // enforce conservative constraints to keep segments traversable
     this._enforceSegmentConstraints(seg);
     this.segments.push(seg);
     this.segmentX += seg.w; // use possibly-clamped width
   }
   createGap(x, y) { return { type:'gap', x, y, w: Math.round(this.rng.range(80, 160)) }; }
-  createPillar(x, y) { return { type:'pillar', x, y, w:30, h:Math.round(this.rng.range(40,160)) }; }
+  createPillar(x, y) { return { type:'pillar', x, y, w:30, h:Math.round(this.rng.range(40,80)) }; }
   createMoving(x, baseY) {
     return { type: 'moving', x, baseY, w: 100, h: 18, amp: Math.round(this.rng.range(20,80)), period: Math.round(this.rng.range(1.2,2.8)), phase: this.rng.next() };
   }

@@ -216,7 +216,7 @@ Parallax layers.
 Effects
 Player trail
 Jump particles burst
-Subtle screen shake on death (world layer only
+Subtle screen shake on death world layer only
 0.5 second slow motion visual effect on death
 Freeze physics immediately on collision
 Neon glitch before Game Over UI.

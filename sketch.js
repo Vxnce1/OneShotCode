@@ -77,7 +77,10 @@ class GameManager {
     this.difficulty = this.load('difficulty', 'medium');
     this.volume = this.load('volume', 0.8);
     this.saveKeyPrefix = 'fluxrunner_';
-    this.coins = this.load('coins', 0);
+    // coins currently held by the player in the run; reset each run
+    this.coins = 0;
+    // persistent total / currency
+    this.totalCoins = this.load('totalCoins', 0);
     this.purchasedShapes = this.load('purchasedShapes', ['square']);
     this.selectedShape = this.load('selectedShape', 'square');
     this.selectedColor = this.load('selectedColor', [0,255,200]);
@@ -91,12 +94,16 @@ class GameManager {
     this.ripples = [];
   }
 
-  addCoins(n) { this.coins = (this.coins||0) + n; this.save('coins', this.coins); }
+  addCoins(n) {
+    this.coins = (this.coins||0) + n;
+    this.totalCoins = (this.totalCoins||0) + n;
+    try { this.save('totalCoins', this.totalCoins); } catch(e){}
+  }
 
   buyShape(name, price) {
     if (this.purchasedShapes.indexOf(name) !== -1) return false;
-    if (this.coins < price) return false;
-    this.coins -= price; this.save('coins', this.coins);
+    if (this.totalCoins < price) return false;
+    this.totalCoins -= price; try { this.save('totalCoins', this.totalCoins); } catch(e){}
     this.purchasedShapes.push(name); this.save('purchasedShapes', this.purchasedShapes);
     return true;
   }
@@ -113,6 +120,13 @@ class GameManager {
   changeState(newState) {
     this.state = newState;
     this.clearTransient();
+    // hide any UI controls whenever the state changes
+    if (window.resumeButton) window.resumeButton.hide();
+    if (window.restartButton) window.restartButton.hide();
+    if (window.menuButton) window.menuButton.hide();
+    if (window.restartGameOverButton) window.restartGameOverButton.hide();
+    if (window.menuGameOverButton) window.menuGameOverButton.hide();
+    if (window.volumeSlider) volumeSlider.hide();
     if (newState === STATES.LOADING) {
       /* nothing */
     }
@@ -122,15 +136,24 @@ class GameManager {
     }
   }
   setupAudio() {
-    this.audio = new RhythmAudio(CONFIG.bpm, this.volume);
+    // audio removed; stub implementation so calls are safe
+    this.audio = { start:()=>{}, pause:()=>{}, resume:()=>{}, update:()=>{}, setVolume:()=>{} };
   }
-  setDifficulty(d) { this.difficulty = d; this.save('difficulty', d); }
+  setDifficulty(d) {
+    this.difficulty = d; this.save('difficulty', d);
+    if (this.map) {
+      this.map.difficulty = d;
+      this.map.speed = CONFIG.baseSpeed[d];
+      this.map.speedCap = CONFIG.speedCap[d];
+    }
+  }
   startSingle() {
     this.seed = (Date.now() & 0xffffffff) ^ 0xdeadbeef;
     this.rng = new SeededRandom(this.seed);
     this.players = [new Player(0,this)];
     this.players.forEach(p=>p.resetForRun());
     this.map = new MapGenerator(this.rng, this.difficulty);
+    this.coins = 0;
     this.audio.start();
     this.runTime = 0;
     this.slowMotion = 0;
@@ -142,6 +165,7 @@ class GameManager {
     this.players = [new Player(0,this), new Player(1,this)];
     this.players.forEach(p=>p.resetForRun());
     this.map = new MapGenerator(this.rng, this.difficulty);
+    this.coins = 0;
     this.audio.start();
     this.runTime = 0;
     this.slowMotion = 0;
@@ -154,6 +178,7 @@ class GameManager {
     this.players.forEach(p=>p.resetForRun());
     this.map = new MapGenerator(this.rng, this.difficulty);
     this.map.generateTutorial();
+    this.coins = 0;
     this.audio.start();
     this.runTime = 0; this.slowMotion = 0;
     this.changeState(STATES.TUTORIAL);
@@ -174,7 +199,8 @@ class GameManager {
   // Persist core settings and progress
   saveAll() {
     try {
-      this.save('coins', this.coins);
+      // coins is per-run; persist only totalCoins (currency/record)
+      this.save('totalCoins', this.totalCoins);
       this.save('purchasedShapes', this.purchasedShapes);
       this.save('selectedShape', this.selectedShape);
       this.save('selectedColor', this.selectedColor);
@@ -185,72 +211,7 @@ class GameManager {
 }
 
 /* ======= Rhythm Audio (synth loop) ======= */
-class RhythmAudio {
-  constructor(bpm, initialVolume=0.8) {
-    this.bpm = bpm;
-    this.beatInterval = 60 / bpm;
-    this.isPlaying = false;
-    this.volume = initialVolume;
-    this.nextTime = 0;
-    this.kick = null; this.hat = null; this.amp = null;
-    this.lastBeat = 0; // audio context time of last triggered beat
-  }
-  initSynth() {
-    if (this.kick) return;
-    this.kick = new p5.Oscillator('sine');
-    this.kick.amp(0);
-    this.kick.freq(100);
-    this.kick.start();
-    this.hat = new p5.Noise('white');
-    this.hat.amp(0);
-    this.hat.start();
-    this.amp = new p5.Gain();
-    this.amp.amp(this.volume);
-    this.kick.disconnect(); this.hat.disconnect();
-    this.kick.connect(this.amp); this.hat.connect(this.amp); this.amp.connect();
-  }
-  start() {
-    userStartAudio();
-    this.initSynth();
-    this.isPlaying = true;
-    this.nextTime = getAudioContext().currentTime + 0.05;
-  }
-  pause() { this.isPlaying = false; }
-  resume() { this.isPlaying = true; }
-  restart() { this.stop(); this.start(); }
-  stop() { this.isPlaying = false; }
-  setVolume(v) { this.volume = v; if (this.amp) this.amp.amp(v); }
-  update(dt) {
-    if (!this.isPlaying) return;
-    const ctx = getAudioContext();
-    while (this.nextTime <= ctx.currentTime + 0.05) {
-      this.triggerBeat(this.nextTime);
-      this.nextTime += this.beatInterval * 0.5; // hi-hat on off-beats too
-    }
-  }
-  triggerBeat(time) {
-    // simple kick every other tick
-    const ctx = getAudioContext();
-    const t = time;
-    // kick on even beats
-    const beatIndex = Math.round((time / this.beatInterval));
-    if (beatIndex % 2 === 0) {
-      this.kick.freq(80);
-      this.kick.amp(0.8, 0.001, t);
-      this.kick.amp(0, 0.18, t + 0.03);
-    } else {
-      // softer click
-      this.kick.freq(140);
-      this.kick.amp(0.25, 0.001, t);
-      this.kick.amp(0, 0.06, t + 0.02);
-    }
-    // hat
-    this.hat.amp(0.08, 0.001, t);
-    this.hat.amp(0, 0.06, t + 0.02);
-    // record beat time for visuals
-    this.lastBeat = time;
-  }
-}
+/* audio code removed; stubbed out in GameManager.setupAudio */
 
 /* ======= Player ======= */
 class Player {
@@ -267,6 +228,7 @@ class Player {
     this.grounded = false;
     this.gravityDir = 1; // 1 down, -1 up
     this.rotation = 0;
+    this.rotationVel = 0;
     this.shape = 'square';
     this.color = [0,255,200];
     this.lastJumpTime = -9999;
@@ -275,7 +237,8 @@ class Player {
     this.score = 0;
     this.alive = true;
     this.distance = 0;
-    this.queuedPortal = null; // portal queued to apply at start of next physics step
+    // portals removed; queue field no longer used
+    // this.queuedPortal = null; // portal queued to apply at start of next physics step
     this.trailTimer = 0;
   }
   resetForRun() { this.reset(); this.y = height - 120; if (this.manager) { this.shape = this.manager.selectedShape || this.shape; this.color = this.manager.selectedColor || this.color; this.distance = 0; this.alive = true; } }
@@ -297,7 +260,8 @@ class Player {
       // rotation on jump for square and x shapes
       if (this.shape === 'square' || this.shape === 'x') {
         const dir = this.gravityDir === 1 ? 1 : -1;
-        this.rotation += 90 * dir;
+        // start spinning in air instead of instant jump
+        this.rotationVel = 360 * dir; // degrees per second
       }
       // emit jump particles
       // if (this.manager && this.manager.particles) this.manager.particles.emit(this.distance, this.y, 8, this.color);
@@ -307,19 +271,7 @@ class Player {
   }
   update(dt, tNow, world) {
     if (!this.alive) return;
-    // Apply queued portal effects at start of physics step
-    if (this.queuedPortal) {
-      const p = this.queuedPortal;
-      if (p.type === 'gravity') {
-        this.gravityDir *= -1;
-      } else if (p.type === 'speed') {
-        // world is actually the MapGenerator instance; update its speed directly
-        // clamp to a reasonable range (0 .. speedCap if available)
-        const cap = (world.speedCap !== undefined) ? world.speedCap : world.speed;
-        world.speed = clamp(p.value, 0, cap);
-      }
-      this.queuedPortal = null;
-    }
+    // portals have been removed; no queued effects
     // physics order: apply gravity, update pos, collision detection, trigger death before correction
     this.applyGravity(dt);
     // vertical sweep to avoid tunneling
@@ -352,8 +304,16 @@ class Player {
         this.grounded = false;
       }
     }
-    // check if fallen off the map
-    if (this.y > height + 50 || this.y < -50) {
+    // check if fallen off the map or outside world bounds
+    const bottomBound = globalManager.map ? globalManager.map.worldBottom : height;
+    const topBound = globalManager.map ? globalManager.map.worldTop : 0;
+    if (this.y > bottomBound + 10 || this.y < topBound - 10) {
+      this.alive = false;
+      world.onPlayerDeath(this);
+      return;
+    }
+    // if velocity is essentially zero while airborne, assume stuck
+    if (!this.grounded && Math.abs(this.vy) < 0.1) {
       this.alive = false;
       world.onPlayerDeath(this);
       return;
@@ -365,8 +325,14 @@ class Player {
       this.attemptJump(tNow);
       this.inputBufferUntil = -9999;
     }
+    // rotation update
+    if (!this.grounded) {
+      // spin while airborne
+      this.rotation += this.rotationVel * dt;
+    }
     // smooth rotation when grounded
     if (this.grounded) {
+      this.rotationVel *= 0.3;
       this.rotation *= 0.6;
       if (Math.abs(this.rotation) < 0.5) this.rotation = 0;
     }
@@ -386,18 +352,7 @@ class Player {
   }
   render(cx, centerX, centerY, opacity=1) {
     push(); translate(centerX, this.y);
-    // beat-synced glow
-    try {
-      let beatStrength = 0;
-      if (this.manager && this.manager.audio && this.manager.audio.lastBeat) {
-        const age = getAudioContext().currentTime - this.manager.audio.lastBeat;
-        const pulseDur = 0.18;
-        beatStrength = clamp(1 - age / pulseDur, 0, 1);
-      }
-      const phasePulse = (globalManager && globalManager.beatPhase) ? (0.35 + 0.65 * Math.abs(Math.sin(globalManager.beatPhase * Math.PI * 2))) : 0.5;
-      const glow = clamp(beatStrength * 0.9 + phasePulse * 0.08, 0, 1) * opacity;
-      noStroke(); fill(this.color[0], this.color[1], this.color[2], Math.floor(120 * glow)); ellipse(0,0,this.width*1.8, this.height*1.8);
-    } catch(e) {}
+    // visual glow disabled
     rotate(radians(this.rotation));
     noFill(); stroke(255); strokeWeight(2);
     fill(this.color[0], this.color[1], this.color[2], 220*opacity);
@@ -422,7 +377,8 @@ class MapGenerator {
     this.segmentX = 0;
     this.pool = new Pool(()=> new Obstacle());
     this.coinPool = new Pool(()=> new Coin());
-    this.portalPool = new Pool(()=> new Portal());
+    // portals have been disabled
+    // this.portalPool = new Pool(()=> new Portal());
     this.particlePool = new Pool(()=> new Particle());
     this.worldTop = 60;
     this.worldBottom = height - 40;
@@ -454,7 +410,7 @@ class MapGenerator {
   pushSegment(force=false) {
     const segWidth = Math.round(this.rng.range(300, 700));
     const platformY = Math.round(this.rng.range(this.worldBottom-120, this.worldBottom-20));
-    const seg = { x: this.segmentX, w: segWidth, platformY, obstacles: [], coins: [], spikes: [], portal: null };
+    const seg = { x: this.segmentX, w: segWidth, platformY, obstacles: [], coins: [], spikes: [] };
     // obstacles as pillars or gaps
     if (this.rng.next() < 0.6) {
       const type = this.rng.next() < 0.5 ? 'gap' : 'pillar';
@@ -479,29 +435,36 @@ class MapGenerator {
     }
     // coins
     if (this.rng.next() < 0.6) {
-      const cx = Math.round(this.rng.range(seg.x + seg.w*0.1, seg.x + seg.w*0.9));
-      const coin = this.coinPool.obtain(); coin.x = cx; coin.y = seg.platformY - 40; coin.active = true; coin.collected = false;
-      // check if intersects obstacles
-      let intersects = false;
-      for (const ob of seg.obstacles) {
-        if (ob.type === 'pillar' && Math.abs(coin.x - ob.x) < 30 && Math.abs(coin.y - ob.y) < 40) { intersects = true; break; }
+      let attempts = 0;
+      let placed = false;
+      while (attempts < 3 && !placed) {
+        attempts++;
+        const cx = Math.round(this.rng.range(seg.x + seg.w*0.1, seg.x + seg.w*0.9));
+        const coin = this.coinPool.obtain(); coin.x = cx; coin.y = seg.platformY - 40; coin.active = true; coin.collected = false;
+        // check if intersects obstacles or spikes
+        let intersects = false;
+        for (const ob of seg.obstacles) {
+          if (ob.type === 'pillar') {
+            if (Math.abs(coin.x - ob.x) < (ob.w/2 + coin.size/2) && Math.abs(coin.y - ob.y) < (ob.h/2 + coin.size/2)) {
+              intersects = true; break;
+            }
+          }
+        }
+        for (const sp of seg.spikes) {
+          if (Math.abs(coin.x - sp.x) < (coin.size/2 + sp.w/2)) { intersects = true; break; }
+        }
+        if (!intersects) { seg.coins.push(coin); placed = true; }
+        else { this.coinPool.release(coin); }
       }
-      if (!intersects) seg.coins.push(coin);
-      else this.coinPool.release(coin);
     }
-    // portals (gravity or speed)
-    // if (this.rng.next() < 0.08) {
-    //   seg.portal = this.portalPool.obtain();
-    //   if (this.rng.next() < 0.6) seg.portal.init('gravity', Math.round(seg.x + seg.w*0.7), platformY - 40);
-    //   else seg.portal.init('speed', Math.round(seg.x + seg.w*0.7), platformY - 40, this.rng.choice([this.speed*1.25, this.speed*0.75]));
-    // }
+    // portals are no longer used
     // enforce conservative constraints to keep segments traversable
     this._enforceSegmentConstraints(seg);
     this.segments.push(seg);
     this.segmentX += seg.w; // use possibly-clamped width
   }
   createGap(x, y) { return { type:'gap', x, y, w: Math.round(this.rng.range(80, 160)) }; }
-  createPillar(x, y) { return { type:'pillar', x, y, w:30, h:Math.round(this.rng.range(40,100)) }; }
+  createPillar(x, y) { return { type:'pillar', x, y, w:30, h:Math.round(this.rng.range(40,80)) }; }
   createMoving(x, baseY) {
     return { type: 'moving', x, baseY, w: 100, h: 18, amp: Math.round(this.rng.range(20,80)), period: Math.round(this.rng.range(1.2,2.8)), phase: this.rng.next() };
   }
@@ -533,11 +496,10 @@ class MapGenerator {
     // ensure segment overall width isn't absurdly large (prevents unreachable spacing)
     const maxSegW = Math.max(300, Math.floor(maxDist * 1.5));
     if (seg.w > maxSegW) seg.w = maxSegW;
-    // if a portal exists, ensure there's a nearby landing platform ahead
-    if (seg.portal) {
-      // if next segments exist, attach portal to a shorter offset within this segment
-      seg.portal.x = Math.round(seg.x + Math.min(seg.w * 0.8,  Math.floor(maxDist * 0.6)));
-    }
+    // portal logic removed
+    // if (seg.portal) {
+    //   seg.portal.x = Math.round(seg.x + Math.min(seg.w * 0.8,  Math.floor(maxDist * 0.6)));
+    // }
   }
 
   // Validate all current segments and return an array of warnings (empty => OK)
@@ -601,7 +563,7 @@ class MapGenerator {
       if (s.x + s.w > camX - 200) keep.push(s);
       else {
         // releasing pooled items
-        if (s.portal) { this.portalPool.release(s.portal); s.portal = null; }
+        // portals removed
         if (s.coins) for (const c of s.coins) { this.coinPool.release(c); }
       }
     }
@@ -616,46 +578,19 @@ class MapGenerator {
       this.speed = Math.min(this.speedCap, this.speed + step);
     }
   }
-  // find safe placement for a portal after minX; returns {seg, x} or null
-  findSafePortalPlacement(minX) {
-    // stricter rules: choose a segment sufficiently ahead with a solid landing area
-    const minSegWidth = 180;
-    const centerClear = 120; // px from center to check for spikes/gaps
-    for (let i=0;i<this.segments.length;i++) {
-      const s = this.segments[i];
-      if (s.x <= minX) continue;
-      if (s.w < minSegWidth) continue;
-      const centerX = s.x + s.w*0.5;
-      // avoid spikes near center and avoid gap obstacles overlapping center
-      let bad = false;
-      if (s.spikes) for (const sp of s.spikes) { if (Math.abs(sp.x - centerX) < centerClear) bad = true; }
-      if (s.obstacles) for (const ob of s.obstacles) { if (ob.type === 'gap' && Math.abs(ob.x - centerX) < centerClear) bad = true; }
-      if (bad) continue;
-      // ensure next segment exists and is not dramatically higher/lower
-      const next = this.segments[i+1];
-      if (next) {
-        if (Math.abs(next.platformY - s.platformY) > 120) continue;
-        // ensure next platform has some width to land on
-        if (next.w < 120) continue;
-      }
-      // chosen: place portal near segment center but slightly inset
-      const placeX = Math.round(s.x + Math.max(40, Math.min(s.w*0.6, s.w*0.5)));
-      return { seg: s, x: placeX };
-    }
-    // fallback: use last segment center if nothing suitable found
-    const last = this.segments[this.segments.length-1];
-    if (last) return { seg: last, x: Math.round(last.x + last.w*0.5) };
-    return null;
-  }
+  // portal support removed; no safe placement required
+  // findSafePortalPlacement(minX) {
+  //   return null;
+  // }
   generateTutorial() {
     this.segments = [];
     this.segmentX = 0;
-    // Simple scripted layout: flat, small gap, pillar, platform, portal safe zone
-    const pushSeg = (w, py) => { const s = { x: this.segmentX, w: w, platformY: py, obstacles: [], coins: [], spikes: [], portal: null }; this.segments.push(s); this.segmentX += w; };
+    // Simple scripted layout: flat, small gap, pillar, platform (portal removed)
+    const pushSeg = (w, py) => { const s = { x: this.segmentX, w: w, platformY: py, obstacles: [], coins: [], spikes: [] }; this.segments.push(s); this.segmentX += w; };
     pushSeg(400, this.worldBottom-40);
     pushSeg(220, this.worldBottom-40);
     // small gap
-    const g = { x: this.segmentX, w: 160, platformY: this.worldBottom-40, obstacles: [{ type:'gap', x:this.segmentX+40, y:this.worldBottom-40, w:120 }], coins: [], spikes: [], portal: null };
+    const g = { x: this.segmentX, w: 160, platformY: this.worldBottom-40, obstacles: [{ type:'gap', x:this.segmentX+40, y:this.worldBottom-40, w:120 }], coins: [], spikes: [] };
     this.segments.push(g); this.segmentX += g.w;
     pushSeg(360, this.worldBottom-80);
     // portal to flip gravity with safe landing
@@ -730,7 +665,7 @@ class MapGenerator {
             const obRight = ob.x + ob.w/2;
             const playerCenterX = a.x + a.w/2;
             if (playerCenterX < obLeft || playerCenterX > obRight) {
-              this.onPlayerDeath(player);
+              onPlayerDeath(player);
               return false;
             }
           }
@@ -752,7 +687,7 @@ class MapGenerator {
             const obRight = ob.x + ob.w/2;
             const playerCenterX = a.x + a.w/2;
             if (playerCenterX < obLeft || playerCenterX > obRight) {
-              this.onPlayerDeath(player);
+              onPlayerDeath(player);
               return false;
             }
           }
@@ -767,7 +702,7 @@ class MapGenerator {
     return false;
   }
   onPlayerDeath(player) {
-    // release portals
+    // originally used for portal cleanup; portals removed.
   }
 }
 
@@ -780,11 +715,12 @@ class Coin {
   constructor(){ this.reset(); }
   reset(){ this.x=0;this.y=0;this.size=12;this.collected=false;this.active=false; }
 }
-class Portal {
-  constructor(){ this.reset(); }
-  reset(){ this.type=null;this.x=0;this.y=0;this.active=false;this.value=null; }
-  init(type,x,y,value=null){ this.type=type;this.x=x;this.y=y;this.active=true;this.value=value; }
-}
+// portals have been removed from the design
+// class Portal {
+//   constructor(){ this.reset(); }
+//   reset(){ this.type=null;this.x=0;this.y=0;this.active=false;this.value=null; }
+//   init(type,x,y,value=null){ this.type=type;this.x=x;this.y=y;this.active=true;this.value=value; }
+// }
 class Particle { constructor(){ this.reset(); } reset(){ this.x=0;this.y=0;this.vx=0;this.vy=0;this.life=0; } }
 
 /* Particle system with pooling */
@@ -838,13 +774,14 @@ function renderUI(manager) {
   push(); noStroke(); fill(255); textSize(14);
   const pad = 12;
   const scoreX = width - 220; const scoreY = 20;
-  // show score and high score
+  // show coins as score and high score
   const p = manager.players[0];
   if (p) {
     textAlign(LEFT, TOP);
-    text('Score: ' + Math.floor(p.distance), scoreX, scoreY);
-    const hs = manager.load('highscore', 0);
-    text('High: ' + hs, scoreX, scoreY+18);
+    text('Coins: ' + manager.coins, scoreX, scoreY);
+    const hsKey = (manager.state === STATES.PLAYING_MULTI) ? 'highscore_multi' : 'highscore';
+    const hs = manager.load(hsKey, 0);
+    text('Best: ' + hs, scoreX, scoreY+18);
     text('Time: ' + (millis()/1000).toFixed(1), scoreX, scoreY+36);
   }
   pop();
@@ -853,6 +790,12 @@ function renderUI(manager) {
 /* ======= Input Handling ======= */
 let globalManager;
 function keyPressed() {
+  // allow entering customize from menu
+  if (!globalManager) return;
+  if ((key === 'C' || key === 'c') && globalManager.state === STATES.MENU) {
+    globalManager.changeState(STATES.CUSTOMIZE);
+    return;
+  }
   if (!globalManager) return;
   if (key === ' ') {
     if (globalManager.state === STATES.PLAYING_SINGLE || globalManager.state === STATES.TUTORIAL) {
@@ -915,6 +858,9 @@ function keyPressed() {
   if ((key === 'S' || key === 's') && globalManager.state === STATES.MENU) {
     globalManager.changeState(STATES.SETTINGS);
   }
+  if ((key === 'H' || key === 'h') && globalManager.state === STATES.MENU) {
+    globalManager.changeState(STATES.SHOP);
+  }
   if (key === 'T' || key === 't') {
     if (globalManager.state === STATES.MENU) globalManager.startTutorial();
   }
@@ -940,7 +886,7 @@ function setup() {
     } catch(e) { console.warn('AUTO_SEED_TEST failed', e); }
   }
   rectMode(CENTER); ellipseMode(CENTER); angleMode(DEGREES);
-  textFont('Arial');
+  textFont('Arial Black');
   globalManager = new GameManager();
   // prepare menu state
   globalManager.changeState(STATES.MENU);
@@ -1000,26 +946,15 @@ function draw() {
     if (window.menuGameOverButton) window.menuGameOverButton.hide();
     if (window.volumeSlider) volumeSlider.hide();
     // update audio
-    globalManager.audio.update(dt);
+    // audio disabled
+    // globalManager.audio.update(dt);
     if (window.volumeSlider) volumeSlider.hide();
     // advance run time
     globalManager.runTime += dt;
-    // beat phase (0..1)
-    const beatInterval = 60 / CONFIG.bpm;
-    globalManager.beatPhase = (globalManager.runTime % beatInterval) / beatInterval;
-    // beat visual pulse using audio's last beat timestamp (if available)
-    try {
-      if (globalManager.audio && globalManager.audio.lastBeat) {
-        const ctx = getAudioContext();
-        const age = ctx.currentTime - globalManager.audio.lastBeat;
-        const pulseDur = 0.18; // seconds
-        const strength = clamp(1 - age / pulseDur, 0, 1);
-        if (strength > 0) {
-          noStroke(); fill(0, 200, 255, Math.floor(strength * CONFIG.beatPulse * 255));
-          rect(0,0,width,height);
-        }
-      }
-    } catch(e) { /* audio not ready, ignore */ }
+    // beat visuals disabled (audio removed)
+    // const beatInterval = 60 / CONFIG.bpm;
+    // globalManager.beatPhase = (globalManager.runTime % beatInterval) / beatInterval;
+    // audio/beat visuals disabled
     // update particles
     if (globalManager.particles) globalManager.particles.update(dt);
     // update map & players
@@ -1082,7 +1017,7 @@ function draw() {
         // const pulse = 0.06 * (0.5 + 0.5 * Math.sin(globalManager.beatPhase * Math.PI * 2));
         // push(); noStroke(); fill(10, 20, 60, 30 + 80 * pulse); rect(0,0,width,halfH); pop();
         const localCamX = camX;
-        noStroke(); fill(255); stroke(0);
+        fill(0); stroke(255);
         // ripples under obstacles
         // for (let ri = globalManager.ripples.length-1; ri >= 0; ri--) {
         //   const r = globalManager.ripples[ri]; r.time += dt; if (r.time > r.life) { globalManager.ripples.splice(ri,1); continue; }
@@ -1091,12 +1026,19 @@ function draw() {
         for (const s of globalManager.map.segments) {
           rectMode(CORNER); rect(s.x - localCamX + width/2, s.platformY - i*halfH, s.w, 20);
           if (s.obstacles) for (const ob of s.obstacles) {
-            if (ob.type === 'pillar') rectMode(CENTER), rect(ob.x - localCamX + width/2, ob.y - ob.h/2 - i*halfH, ob.w, ob.h);
+            if (ob.type === 'pillar') {
+              rectMode(CENTER); rect(ob.x - localCamX + width/2, ob.y - ob.h/2 - i*halfH, ob.w, ob.h);
+            } else if (ob.type === 'jumppad') {
+              rectMode(CENTER); fill(255,140,0); stroke(255); rect(ob.x - localCamX + width/2, ob.y - ob.h/2 - i*halfH, ob.w, ob.h);
+              noFill();
+            }
           }
           if (s.spikes) for (const sp of s.spikes) {
             const sx = sp.x - localCamX + width/2;
-            if (sp.side === 'floor') triangle(sx - sp.w/2, s.platformY - i*halfH, sx + sp.w/2, s.platformY - i*halfH, sx, s.platformY - 28 - i*halfH);
-            else triangle(sx - sp.w/2, s.platformY - 20 - i*halfH, sx + sp.w/2, s.platformY - 20 - i*halfH, sx, s.platformY + 28 - i*halfH);
+            // always floor spike, base slightly above platform
+            const baseY = s.platformY - i*halfH - 1;
+            const apexY = baseY - 20;
+            triangle(sx - sp.w/2, baseY, sx + sp.w/2, baseY, sx, apexY);
           }
           if (s.coins) for (const coin of s.coins) {
             if (!coin.active || coin.collected) continue;
@@ -1106,17 +1048,7 @@ function draw() {
               coin.collected = true; coin.active = false; globalManager.addCoins(1); globalManager.map.coinPool.release(coin);
             }
           }
-          if (s.portal && s.portal.active) {
-            const px = s.portal.x - localCamX + width/2; const py = s.portal.y - i*halfH;
-            fill(0,200,255); stroke(255); ellipse(px, py, 28);
-            if (rectsIntersect({ x: s.portal.x-14, y: s.portal.y-14, w:28, h:28 }, p.getAABB())) {
-              p.queuedPortal = { type: s.portal.type, value: s.portal.value };
-              if (s.portal.type === 'gravity') {
-                const revert = globalManager.map.portalPool.obtain(); revert.init('gravity', s.portal.x + 400, s.platformY - 40);
-              }
-              s.portal.active = false; globalManager.map.portalPool.release(s.portal); s.portal = null;
-            }
-          }
+          // portals removed; nothing to render
         }
         // render particles for this view
         if (globalManager.particles) globalManager.particles.render(localCamX);
@@ -1131,16 +1063,22 @@ function draw() {
       const shakeX = Math.sin(globalManager.runTime * 60) * (globalManager.shakeTimer*6);
       const shakeY = Math.cos(globalManager.runTime * 70) * (globalManager.shakeTimer*3);
       translate(shakeX, shakeY);
-      noStroke(); fill(255); stroke(0);
+      fill(0); stroke(255);
       for (const s of globalManager.map.segments) {
         rectMode(CORNER); rect(s.x - camX + width/2, s.platformY, s.w, 20);
         if (s.obstacles) for (const ob of s.obstacles) {
-          if (ob.type === 'pillar') rectMode(CENTER), rect(ob.x - camX + width/2, ob.y - ob.h/2, ob.w, ob.h);
+          if (ob.type === 'pillar') {
+            rectMode(CENTER); rect(ob.x - camX + width/2, ob.y - ob.h/2, ob.w, ob.h);
+          } else if (ob.type === 'jumppad') {
+            rectMode(CENTER); fill(255,140,0); stroke(255); rect(ob.x - camX + width/2, ob.y - ob.h/2, ob.w, ob.h);
+            noFill();
+          }
         }
         if (s.spikes) for (const sp of s.spikes) {
           const sx = sp.x - camX + width/2;
-          if (sp.side === 'floor') triangle(sx - sp.w/2, s.platformY, sx + sp.w/2, s.platformY, sx, s.platformY - 28);
-          else triangle(sx - sp.w/2, s.platformY - 20, sx + sp.w/2, s.platformY - 20, sx, s.platformY + 28);
+          const baseY = s.platformY - 1;
+          const apexY = baseY - 20;
+          triangle(sx - sp.w/2, baseY, sx + sp.w/2, baseY, sx, apexY);
         }
         if (s.coins) for (const coin of s.coins) {
           if (!coin.active || coin.collected) continue;
@@ -1150,17 +1088,7 @@ function draw() {
             coin.collected = true; coin.active = false; globalManager.addCoins(1); globalManager.map.coinPool.release(coin);
           }
         }
-        if (s.portal && s.portal.active) {
-          const px = s.portal.x - camX + width/2; const py = s.portal.y;
-          push(); fill(0,200,255); stroke(255); ellipse(px, py, 28); pop();
-          if (rectsIntersect({ x: s.portal.x-14, y: s.portal.y-14, w:28, h:28 }, globalManager.players[0].getAABB())) {
-            globalManager.players[0].queuedPortal = { type: s.portal.type, value: s.portal.value };
-            if (s.portal.type === 'gravity') {
-              const revert = globalManager.map.portalPool.obtain(); revert.init('gravity', s.portal.x + 400, s.platformY - 40);
-            }
-            s.portal.active = false; globalManager.map.portalPool.release(s.portal); s.portal = null;
-          }
-        }
+        // portals removed; nothing to render
       }
       // render particles
       if (globalManager.particles) globalManager.particles.render(camX);
@@ -1199,8 +1127,10 @@ function draw() {
     if (window.volumeSlider) volumeSlider.hide();
     fill(255); textSize(28); textAlign(CENTER, CENTER); text('GAME OVER', width/2, height/2 - 60);
     const score = globalManager.coins;
-    textSize(16); text('High Score: ' + score, width/2, height/2 - 30);
-    text('Coins: ' + globalManager.coins, width/2, height/2 - 10);
+    textSize(16); text('Coins this run: ' + score, width/2, height/2 - 30);
+    const hsKey = (globalManager.state === STATES.PLAYING_MULTI) ? 'highscore_multi' : 'highscore';
+    const hs = globalManager.load(hsKey,0);
+    text('Best: ' + hs, width/2, height/2 - 10);
     if (!window.restartGameOverButton) {
       window.restartGameOverButton = createButton('Restart');
       window.restartGameOverButton.position(width/2 - 50, height/2 + 10);
@@ -1224,8 +1154,10 @@ function drawMenu() {
   push(); textAlign(CENTER, CENTER); fill(255);
   textSize(48); text('Flux Runner', width/2, height*0.25);
   textSize(18); text('Press Enter to Start (Single) or 2 for Multiplayer', width/2, height*0.35);
-  textSize(14); text('W / Space to jump. P to pause.', width/2, height*0.42);
+  textSize(14); text('W / Space to jump. P to pause. C to customize, H for shop, T for tutorial', width/2, height*0.42);
   textSize(12); text('Press D to run deterministic seed-safety test (dev)', width/2, height*0.48);
+  textSize(12); text('Difficulty: ' + (globalManager?globalManager.difficulty:'?'), width/2, height*0.52);
+  textSize(12); text('Total Coins: ' + (globalManager?globalManager.totalCoins:0), width/2, height*0.56);
   if (globalManager && globalManager.debugTestResults) {
     const res = globalManager.debugTestResults;
     textSize(12); textAlign(LEFT, TOP);
@@ -1258,7 +1190,7 @@ function drawShop(manager) {
     }
   }
   // coins and back
-  textSize(14); textAlign(LEFT); text('Coins: '+manager.coins, 16, 20);
+  textSize(14); textAlign(LEFT); text('Coins: '+manager.totalCoins, 16, 20);
   textAlign(RIGHT); text('Press M to return', width-16, 20);
   pop();
   // confirmation overlay
@@ -1273,6 +1205,7 @@ function drawShop(manager) {
 function drawSettings(manager) {
   push(); fill(255); textSize(20); textAlign(CENTER, TOP);
   text('Settings', width/2, 24);
+  textSize(12); textAlign(CENTER, TOP); text('Difficulty change applies next run', width/2, 50);
   textSize(14); textAlign(LEFT, TOP);
   // Difficulty buttons
   const dx = 80; const dy = 100; const bw = 120; const bh = 40;
@@ -1284,6 +1217,7 @@ function drawSettings(manager) {
   }
   // Volume display
   textAlign(LEFT, TOP); textSize(14); text('Volume: ' + Math.round(manager.volume*100) + '%', 40, dy+90);
+  text('Total coins: ' + (manager.totalCoins||0), 40, dy+110);
   text('Close: M or press outside area', width/2, height-40);
   pop();
 }
@@ -1291,6 +1225,8 @@ function drawSettings(manager) {
 function drawCustomize(manager) {
   push(); fill(255); textSize(20); textAlign(LEFT, TOP);
   text('Customize', 16, 16);
+  textSize(14); textAlign(RIGHT, TOP); text('Coins: ' + manager.totalCoins, width-16, 20);
+  textSize(14); textAlign(LEFT, TOP); text('Press M to return', 40, height-40);
   // palette (no black, no white)
   const palette = [[255,50,180],[0,200,255],[120,255,80],[255,160,0],[180,90,255]];
   const startX = 40; const startY = 80; const s = 40;
@@ -1313,11 +1249,11 @@ function drawCustomize(manager) {
 
 function onPlayerDeath(player) {
   // freeze audio and trigger game over immediately
-  globalManager.audio.pause();
+  if (globalManager && globalManager.audio) globalManager.audio.pause();
   if (globalManager.state === STATES.PLAYING_MULTI) {
     for (const p of globalManager.players) p.alive = false;
   }
-  // save score
+  // save run coin score as highscore
   const score = globalManager.coins;
   if (globalManager.state === STATES.PLAYING_MULTI) {
     const key = 'highscore_multi';
@@ -1369,7 +1305,7 @@ function mousePressed() {
         const opts = ['easy','medium','hard']; globalManager.setDifficulty(opts[i]); return;
       }
     }
-    // click outside closes settings
+      // click outside closes settings
     if (!(mX > width/2-260 && mX < width/2+260 && mY > 60 && mY < height-60)) { globalManager.changeState(STATES.MENU); return; }
   } else if (globalManager.state === STATES.CUSTOMIZE) {
     // palette
