@@ -376,8 +376,8 @@ class Player {
     }
   }
   getAABB() {
-    // 5% forgiveness shrink
-    const shw = this.width * 0.05; const shh = this.height * 0.05;
+    // 2% forgiveness shrink
+    const shw = this.width * 0.02; const shh = this.height * 0.02;
     // use world-relative horizontal position: distance
     const worldX = (this.distance || 0);
     return { x: worldX - this.width/2 + shw, y: this.y - this.height/2 + shh, w: this.width - shw*2, h: this.height - shh*2 };
@@ -462,7 +462,7 @@ class MapGenerator {
     // spikes
     if (this.rng.next() < 0.18) {
       const sx = Math.round(this.rng.range(seg.x + seg.w*0.1, seg.x + seg.w*0.9));
-      const spike = { x: sx, w: 28, side: this.rng.next()<0.5? 'floor':'ceiling' };
+      const spike = { x: sx, w: 28, side: 'floor' };
       // check spacing
       let spaced = true;
       for (const sp of seg.spikes) {
@@ -697,11 +697,19 @@ class MapGenerator {
     }
     // platform surfaces
     for (const s of this.segments) {
-      // static platform
       const plat = { x: s.x, y: s.platformY, w: s.w, h: 20 };
       if (rectsIntersect(a, plat)) {
         if (player.gravityDir === 1 && player.vy >= 0) { player.y = s.platformY - player.height/2; return true; }
         else if (player.gravityDir === -1 && player.vy <= 0) { player.y = s.platformY + 20 + player.height/2; return true; }
+        // if intersecting but not landing, check if clipping through side
+        const platLeft = plat.x - plat.w/2;
+        const platRight = plat.x + plat.w/2;
+        const playerCenterX = a.x + a.w/2;
+        if (playerCenterX < platLeft || playerCenterX > platRight) {
+          // clipping through side, trigger death
+          this.onPlayerDeath(player);
+          return false;
+        }
       }
       // dynamic obstacles
       if (s.obstacles) for (const ob of s.obstacles) {
@@ -715,6 +723,14 @@ class MapGenerator {
           if (rectsIntersect(a, mb)) {
             if (player.gravityDir === 1 && player.vy >= 0) { player.y = curY - player.height/2; return true; }
             else if (player.gravityDir === -1 && player.vy <= 0) { player.y = curY + ob.h + player.height/2; return true; }
+            // check side clipping
+            const obLeft = ob.x - ob.w/2;
+            const obRight = ob.x + ob.w/2;
+            const playerCenterX = a.x + a.w/2;
+            if (playerCenterX < obLeft || playerCenterX > obRight) {
+              this.onPlayerDeath(player);
+              return false;
+            }
           }
         } else if (ob.type === 'jumppad') {
           const jb = { x: ob.x - ob.w/2, y: ob.y - ob.h/2, w: ob.w, h: ob.h };
@@ -728,6 +744,14 @@ class MapGenerator {
                 if (player.manager && player.manager.particles) player.manager.particles.emit(player.distance, player.y, 12, [255,200,80]);
               }
               return false; // don't treat as platform
+            }
+            // check side clipping
+            const obLeft = ob.x - ob.w/2;
+            const obRight = ob.x + ob.w/2;
+            const playerCenterX = a.x + a.w/2;
+            if (playerCenterX < obLeft || playerCenterX > obRight) {
+              this.onPlayerDeath(player);
+              return false;
             }
           }
         } else if (ob.type === 'ring') {
@@ -829,12 +853,12 @@ let globalManager;
 function keyPressed() {
   if (!globalManager) return;
   if (key === ' ') {
-    if (globalManager.state === STATES.PLAYING_SINGLE) {
+    if (globalManager.state === STATES.PLAYING_SINGLE || globalManager.state === STATES.TUTORIAL) {
       const tNow = globalManager.runTime; if (!globalManager.players[0].attemptJump(tNow)) globalManager.players[0].inputBufferUntil = tNow + (CONFIG.inputBufferMs/1000);
     }
   }
   if (key === 'W' || key === 'w') {
-    if (globalManager.state === STATES.PLAYING_SINGLE) {
+    if (globalManager.state === STATES.PLAYING_SINGLE || globalManager.state === STATES.TUTORIAL) {
       const tNow = globalManager.runTime; if (!globalManager.players[0].attemptJump(tNow)) globalManager.players[0].inputBufferUntil = tNow + (CONFIG.inputBufferMs/1000);
     } else if (globalManager.state === STATES.PLAYING_MULTI) {
       const tNow = globalManager.runTime; if (!globalManager.players[0].attemptJump(tNow)) globalManager.players[0].inputBufferUntil = tNow + (CONFIG.inputBufferMs/1000);
@@ -959,6 +983,11 @@ function draw() {
 
   // state handling
   if (globalManager.state === STATES.MENU) {
+    if (window.resumeButton) window.resumeButton.hide();
+    if (window.restartButton) window.restartButton.hide();
+    if (window.menuButton) window.menuButton.hide();
+    if (window.restartGameOverButton) window.restartGameOverButton.hide();
+    if (window.menuGameOverButton) window.menuGameOverButton.hide();
     drawMenu();
     if (window.volumeSlider) volumeSlider.show();
   } else if (globalManager.state === STATES.PLAYING_SINGLE || globalManager.state === STATES.PLAYING_MULTI || globalManager.state === STATES.TUTORIAL) {
@@ -1004,7 +1033,7 @@ function draw() {
       if (globalManager.slowMotion <= 0) {
         // finalize game over and save score
         const player = globalManager.pendingDeathPlayer;
-        const score = Math.floor(player.distance || 0);
+        const score = globalManager.coins;
         if (globalManager.state === STATES.PLAYING_MULTI) {
           const key = 'highscore_multi';
           const cur = globalManager.load(key, 0);
@@ -1051,7 +1080,7 @@ function draw() {
         // const pulse = 0.06 * (0.5 + 0.5 * Math.sin(globalManager.beatPhase * Math.PI * 2));
         // push(); noStroke(); fill(10, 20, 60, 30 + 80 * pulse); rect(0,0,width,halfH); pop();
         const localCamX = camX;
-        noStroke(); fill(0); stroke(255);
+        noStroke(); fill(255); stroke(0);
         // ripples under obstacles
         for (let ri = globalManager.ripples.length-1; ri >= 0; ri--) {
           const r = globalManager.ripples[ri]; r.time += dt; if (r.time > r.life) { globalManager.ripples.splice(ri,1); continue; }
@@ -1100,7 +1129,7 @@ function draw() {
       const shakeX = Math.sin(globalManager.runTime * 60) * (globalManager.shakeTimer*6);
       const shakeY = Math.cos(globalManager.runTime * 70) * (globalManager.shakeTimer*3);
       translate(shakeX, shakeY);
-      noStroke(); fill(0); stroke(255);
+      noStroke(); fill(255); stroke(0);
       for (const s of globalManager.map.segments) {
         rectMode(CORNER); rect(s.x - camX + width/2, s.platformY, s.w, 20);
         if (s.obstacles) for (const ob of s.obstacles) {
@@ -1133,6 +1162,8 @@ function draw() {
       }
       // render particles
       if (globalManager.particles) globalManager.particles.render(camX);
+      globalManager.players[0].render(null, width/2, globalManager.players[0].y);
+      renderUI(globalManager);
       pop();
       for (let i=0;i<globalManager.players.length;i++) {
         const p = globalManager.players[i];
@@ -1165,8 +1196,8 @@ function draw() {
   } else if (globalManager.state === STATES.GAMEOVER) {
     if (window.volumeSlider) volumeSlider.hide();
     fill(255); textSize(28); textAlign(CENTER, CENTER); text('GAME OVER', width/2, height/2 - 60);
-    const score = Math.floor(globalManager.players[0].distance || 0);
-    textSize(16); text('Score: ' + score, width/2, height/2 - 30);
+    const score = globalManager.coins;
+    textSize(16); text('High Score: ' + score, width/2, height/2 - 30);
     text('Coins: ' + globalManager.coins, width/2, height/2 - 10);
     if (!window.restartGameOverButton) {
       window.restartGameOverButton = createButton('Restart');
@@ -1285,6 +1316,9 @@ function onPlayerDeath(player) {
   globalManager.pendingDeathPlayer = player;
   globalManager.slowMotion = 0.5;
   globalManager.shakeTimer = 0.45;
+  if (globalManager.state === STATES.PLAYING_MULTI) {
+    for (const p of globalManager.players) p.alive = false;
+  }
   if (globalManager.particles) globalManager.particles.emit(player.distance, player.y, 40, [255,90,120]);
 }
 
