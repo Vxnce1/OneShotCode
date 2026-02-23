@@ -211,7 +211,111 @@ class GameManager {
 }
 
 /* ======= Rhythm Audio (synth loop) ======= */
+<<<<<<< HEAD
 /* audio code removed; stubbed out in GameManager.setupAudio */
+=======
+class RhythmAudio {
+  constructor(bpm, initialVolume=0.8) {
+    this.bpm = bpm;
+    this.beatInterval = 60 / bpm;
+    this.isPlaying = false;
+    this.volume = initialVolume;
+    this.nextTime = 0;
+    this.kick = null; this.hat = null; this.amp = null;
+    this.lastBeat = 0; // audio context time of last triggered beat
+  }
+  initSynth() {
+    if (this.kick) return;
+    try {
+      // Check if p5.sound is available
+      if (!window.p5 || !p5.Oscillator) return;
+      
+      // Ensure audio context is in running state
+      const ctx = getAudioContext();
+      if (!ctx) return;
+      
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+      
+      this.kick = new p5.Oscillator('sine');
+      this.kick.amp(0);
+      this.kick.freq(100);
+      this.kick.start();
+      this.hat = new p5.Noise('white');
+      this.hat.amp(0);
+      this.hat.start();
+      this.amp = new p5.Gain();
+      this.amp.amp(this.volume);
+      this.kick.disconnect(); this.hat.disconnect();
+      this.kick.connect(this.amp); this.hat.connect(this.amp); this.amp.connect();
+    } catch(e) {
+      // Silently fail - audio is not critical to game function
+      this.kick = null;
+      this.hat = null;
+      this.amp = null;
+    }
+  }
+  start() {
+    userStartAudio();
+    this.initSynth();
+    this.isPlaying = true;
+    try {
+      const ctx = getAudioContext();
+      if (ctx && ctx.state === 'running') {
+        this.nextTime = ctx.currentTime + 0.05;
+      }
+    } catch(e) {
+      this.nextTime = 0;
+    }
+  }
+  pause() { this.isPlaying = false; }
+  resume() { this.isPlaying = true; }
+  restart() { this.stop(); this.start(); }
+  stop() { this.isPlaying = false; }
+  setVolume(v) { this.volume = v; if (this.amp) this.amp.amp(v); }
+  update(dt) {
+    if (!this.isPlaying || !this.kick || !this.hat) return;
+    try {
+      const ctx = getAudioContext();
+      if (!ctx || ctx.state !== 'running') return;
+      while (this.nextTime <= ctx.currentTime + 0.05) {
+        this.triggerBeat(this.nextTime);
+        this.nextTime += this.beatInterval * 0.5; // hi-hat on off-beats too
+      }
+    } catch(e) {
+      // silently ignore audio errors
+    }
+  }
+  triggerBeat(time) {
+    // simple kick every other tick
+    if (!this.kick || !this.hat) return;
+    try {
+      const ctx = getAudioContext();
+      const t = time;
+      // kick on even beats
+      const beatIndex = Math.round((time / this.beatInterval));
+      if (beatIndex % 2 === 0) {
+        this.kick.freq(80);
+        this.kick.amp(0.8, 0.001, t);
+        this.kick.amp(0, 0.18, t + 0.03);
+      } else {
+        // softer click
+        this.kick.freq(140);
+        this.kick.amp(0.25, 0.001, t);
+        this.kick.amp(0, 0.06, t + 0.02);
+      }
+      // hat
+      this.hat.amp(0.08, 0.001, t);
+      this.hat.amp(0, 0.06, t + 0.02);
+      // record beat time for visuals
+      this.lastBeat = time;
+    } catch(e) {
+      // silently ignore audio errors
+    }
+  }
+}
+>>>>>>> ac0e22cd7fe45a97b17746ef84a5ecc1a7f6ace9
 
 /* ======= Player ======= */
 class Player {
