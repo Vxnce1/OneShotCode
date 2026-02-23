@@ -64,7 +64,7 @@ function rectsIntersect(a,b){
 /* ======= Core Game State Manager ======= */
 const STATES = {
   LOADING: 'LOADING', MENU: 'MENU', SHOP: 'SHOP', CUSTOMIZE: 'CUSTOMIZE', TUTORIAL: 'TUTORIAL', SETTINGS: 'SETTINGS',
-  PLAYING_SINGLE: 'PLAYING_SINGLE', PLAYING_MULTI: 'PLAYING_MULTI', PAUSED: 'PAUSED', GAMEOVER: 'GAMEOVER'
+  PLAYING_SINGLE: 'PLAYING_SINGLE', /* PLAYING_MULTI: 'PLAYING_MULTI', */ PAUSED: 'PAUSED', GAMEOVER: 'GAMEOVER'
 };
 
 class GameManager {
@@ -164,17 +164,9 @@ class GameManager {
     this.slowMotion = 0;
     this.changeState(STATES.PLAYING_SINGLE);
   }
+  // multiplayer removed; alias to single-player start
   startMulti() {
-    this.seed = (Date.now() & 0xffffffff) ^ 0xabcdef01;
-    this.rng = new SeededRandom(this.seed);
-    this.players = [new Player(0,this), new Player(1,this)];
-    this.players.forEach(p=>p.resetForRun());
-    this.map = new MapGenerator(this.rng, this.difficulty);
-    this.coins = 0;
-    this.audio.start();
-    this.runTime = 0;
-    this.slowMotion = 0;
-    this.changeState(STATES.PLAYING_MULTI);
+    this.startSingle();
   }
   startTutorial() {
     this.seed = 0x12345678;
@@ -190,7 +182,7 @@ class GameManager {
   }
 
   pauseToggle() {
-    if (this.state === STATES.PLAYING_SINGLE || this.state === STATES.PLAYING_MULTI) {
+    if (this.state === STATES.PLAYING_SINGLE) {
       this.prevState = this.state;
       this.changeState(STATES.PAUSED);
       this.audio.pause();
@@ -743,15 +735,7 @@ class MapGenerator {
       if (rectsIntersect(a, plat)) {
         if (player.gravityDir === 1 && player.vy >= 0) { player.y = s.platformY - player.height/2; return true; }
         else if (player.gravityDir === -1 && player.vy <= 0) { player.y = s.platformY + 20 + player.height/2; return true; }
-        // if intersecting but not landing, check if clipping through side
-        const platLeft = plat.x - plat.w/2;
-        const platRight = plat.x + plat.w/2;
-        const playerCenterX = a.x + a.w/2;
-        if (playerCenterX < platLeft || playerCenterX > platRight) {
-          // clipping through side, trigger death
-          this.onPlayerDeath(player);
-          return false;
-        }
+        // intersection occurred but not landing (e.g. rising into platform) – ignore
       }
       // dynamic obstacles
       if (s.obstacles) for (const ob of s.obstacles) {
@@ -884,7 +868,7 @@ function renderUI(manager) {
   if (p) {
     textAlign(LEFT, TOP);
     text('Coins: ' + manager.coins, scoreX, scoreY);
-    const hsKey = (manager.state === STATES.PLAYING_MULTI) ? 'highscore_multi' : 'highscore';
+    const hsKey = 'highscore';
     const hs = manager.load(hsKey, 0);
     text('Best: ' + hs, scoreX, scoreY+18);
     text('Time: ' + (millis()/1000).toFixed(1), scoreX, scoreY+36);
@@ -910,12 +894,12 @@ function keyPressed() {
   if (key === 'W' || key === 'w') {
     if (globalManager.state === STATES.PLAYING_SINGLE || globalManager.state === STATES.TUTORIAL) {
       const tNow = globalManager.runTime; if (!globalManager.players[0].attemptJump(tNow)) globalManager.players[0].inputBufferUntil = tNow + (CONFIG.inputBufferMs/1000);
-    } else if (globalManager.state === STATES.PLAYING_MULTI) {
+    }
       const tNow = globalManager.runTime; if (!globalManager.players[0].attemptJump(tNow)) globalManager.players[0].inputBufferUntil = tNow + (CONFIG.inputBufferMs/1000);
     }
   }
   // Check jump-rings when pressing jump: if overlapping, apply ring strength
-  if (globalManager.state === STATES.PLAYING_SINGLE || globalManager.state === STATES.PLAYING_MULTI) {
+  if (globalManager.state === STATES.PLAYING_SINGLE) {
     for (const p of globalManager.players) {
       if (!p.alive) continue;
       const map = globalManager.map;
@@ -935,19 +919,21 @@ function keyPressed() {
       }
     }
   }
-  if (keyCode === UP_ARROW) {
-    if (globalManager.state === STATES.PLAYING_MULTI) {
-      const tNow = globalManager.runTime; if (!globalManager.players[1].attemptJump(tNow)) globalManager.players[1].inputBufferUntil = tNow + (CONFIG.inputBufferMs/1000);
-    }
-  }
+  // multiplayer jump (removed)  
+  // if (keyCode === UP_ARROW) {
+  //   if (globalManager.state === STATES.PLAYING_MULTI) {
+  //     const tNow = globalManager.runTime; if (!globalManager.players[1].attemptJump(tNow)) globalManager.players[1].inputBufferUntil = tNow + (CONFIG.inputBufferMs/1000);
+  //   }
+  // }
   if (key === 'P' || key === 'p') globalManager.pauseToggle();
   if (keyCode === ENTER) {
     if (globalManager.state === STATES.MENU) globalManager.startSingle();
     else if (globalManager.state === STATES.GAMEOVER) globalManager.startSingle();
   }
-  if (key === '2') {
-    if (globalManager.state === STATES.MENU) globalManager.startMulti();
-  }
+  // multiplayer disabled
+  // if (key === '2') {
+  //   if (globalManager.state === STATES.MENU) globalManager.startMulti();
+  // }
   if (key === 'M' || key === 'm') {
     globalManager.changeState(STATES.MENU);
   }
@@ -1043,7 +1029,7 @@ function draw() {
     if (window.menuGameOverButton) window.menuGameOverButton.hide();
     drawMenu();
     if (window.volumeSlider) volumeSlider.show();
-  } else if (globalManager.state === STATES.PLAYING_SINGLE || globalManager.state === STATES.PLAYING_MULTI || globalManager.state === STATES.TUTORIAL) {
+  } else if (globalManager.state === STATES.PLAYING_SINGLE || globalManager.state === STATES.TUTORIAL) {
     if (window.resumeButton) window.resumeButton.hide();
     if (window.restartButton) window.restartButton.hide();
     if (window.menuButton) window.menuButton.hide();
@@ -1076,7 +1062,7 @@ function draw() {
     //     // finalize game over and save score
     //     const player = globalManager.pendingDeathPlayer;
     //     const score = globalManager.coins;
-    //     if (globalManager.state === STATES.PLAYING_MULTI) {
+    // (multi-player removed)
     //       const key = 'highscore_multi';
     //       const cur = globalManager.load(key, 0);
     //       if (score > cur) globalManager.save(key, score);
@@ -1106,63 +1092,8 @@ function draw() {
         globalManager.changeState(STATES.MENU);
       }
     }
-    // render world (single or split-screen)
-    if (globalManager.state === STATES.PLAYING_MULTI) {
-      const halfH = height/2;
-      for (let i=0;i<2;i++) {
-        const p = globalManager.players[i];
-        push();
-        translate(0, i*halfH);
-        // screen shake for world layer
-        const shakeX = Math.sin(globalManager.runTime * 60 + i) * (globalManager.shakeTimer*6);
-        const shakeY = Math.cos(globalManager.runTime * 70 + i) * (globalManager.shakeTimer*3);
-        translate(shakeX, shakeY);
-        // background for half with subtle beat pulse
-        noStroke(); fill(6,8,20); rectMode(CORNER); rect(0,0,width,halfH);
-        // const pulse = 0.06 * (0.5 + 0.5 * Math.sin(globalManager.beatPhase * Math.PI * 2));
-        // push(); noStroke(); fill(10, 20, 60, 30 + 80 * pulse); rect(0,0,width,halfH); pop();
-        const localCamX = camX;
-        fill(0); stroke(255);
-        // ripples under obstacles
-        // for (let ri = globalManager.ripples.length-1; ri >= 0; ri--) {
-        //   const r = globalManager.ripples[ri]; r.time += dt; if (r.time > r.life) { globalManager.ripples.splice(ri,1); continue; }
-        //   const rr = r.time / r.life; stroke(120,200,255, 160*(1-rr)); noFill(); strokeWeight(2); ellipse(r.x - localCamX + width/2, r.y, rr * r.maxR);
-        // }
-        for (const s of globalManager.map.segments) {
-          rectMode(CORNER); rect(s.x - localCamX + width/2, s.platformY - i*halfH, s.w, 20);
-          if (s.obstacles) for (const ob of s.obstacles) {
-            if (ob.type === 'pillar') {
-              rectMode(CENTER); rect(ob.x - localCamX + width/2, ob.y - ob.h/2 - i*halfH, ob.w, ob.h);
-            } else if (ob.type === 'jumppad') {
-              rectMode(CENTER); fill(255,140,0); stroke(255); rect(ob.x - localCamX + width/2, ob.y - ob.h/2 - i*halfH, ob.w, ob.h);
-              noFill();
-            }
-          }
-          if (s.spikes) for (const sp of s.spikes) {
-            const sx = sp.x - localCamX + width/2;
-            // always floor spike, base slightly above platform
-            const baseY = s.platformY - i*halfH - 1;
-            const apexY = baseY - 20;
-            triangle(sx - sp.w/2, baseY, sx + sp.w/2, baseY, sx, apexY);
-          }
-          if (s.coins) for (const coin of s.coins) {
-            if (!coin.active || coin.collected) continue;
-            const cx = coin.x - localCamX + width/2; const cy = coin.y - i*halfH;
-            fill(255,200,0); stroke(255); ellipse(cx, cy, coin.size);
-            if (rectsIntersect({ x: coin.x-coin.size/2, y: coin.y-coin.size/2, w: coin.size, h: coin.size }, p.getAABB())) {
-              coin.collected = true; coin.active = false; globalManager.addCoins(1); globalManager.map.coinPool.release(coin);
-            }
-          }
-          // portals removed; nothing to render
-        }
-        // render particles for this view
-        if (globalManager.particles) globalManager.particles.render(localCamX);
-        const centerX = width/2; const centerY = halfH/2;
-        p.render(null, centerX, p.y - i*halfH);
-        pop();
-      }
-      renderUI(globalManager);
-    } else {
+    // render world (single-player)
+    // single camera view
       push(); translate(0,0);
       // screen shake
       const shakeX = Math.sin(globalManager.runTime * 60) * (globalManager.shakeTimer*6);
@@ -1233,7 +1164,7 @@ function draw() {
     fill(255); textSize(28); textAlign(CENTER, CENTER); text('GAME OVER', width/2, height/2 - 60);
     const score = globalManager.coins;
     textSize(16); text('Coins this run: ' + score, width/2, height/2 - 30);
-    const hsKey = (globalManager.state === STATES.PLAYING_MULTI) ? 'highscore_multi' : 'highscore';
+    const hsKey = 'highscore';
     const hs = globalManager.load(hsKey,0);
     text('Best: ' + hs, width/2, height/2 - 10);
     if (!window.restartGameOverButton) {
@@ -1258,7 +1189,7 @@ function draw() {
 function drawMenu() {
   push(); textAlign(CENTER, CENTER); fill(255);
   textSize(48); text('Flux Runner', width/2, height*0.25);
-  textSize(18); text('Press Enter to Start (Single) or 2 for Multiplayer', width/2, height*0.35);
+  textSize(18); text('Press Enter to Start', width/2, height*0.35);
   textSize(14); text('W / Space to jump. P to pause. C to customize, H for shop, T for tutorial', width/2, height*0.42);
   textSize(12); text('Press D to run deterministic seed-safety test (dev)', width/2, height*0.48);
   textSize(12); text('Difficulty: ' + (globalManager?globalManager.difficulty:'?'), width/2, height*0.52);
@@ -1272,7 +1203,7 @@ function drawMenu() {
     }
     textAlign(CENTER, CENTER);
   }
-  textSize(12); text('Press S for Settings, T for Tutorial', width/2, height*0.52);
+  textSize(12); text('Press S for Settings, T for Tutorial', width/2, height*0.60);
   pop();
 }
 
