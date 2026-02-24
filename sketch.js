@@ -61,6 +61,18 @@ function rectsIntersect(a,b){
   return !(a.x + a.w < b.x || a.x > b.x + b.w || a.y + a.h < b.y || a.y > b.y + b.h);
 }
 
+// circle vs rect intersection using closest-point method.  Used for
+// round player shape so landing tests aren’t triggered when the
+// bounding box merely grazes a platform edge.
+function circleRectIntersect(cx, cy, r, rect) {
+  // find closest point on rect to circle center
+  const closestX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
+  const closestY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
+  const dx = cx - closestX;
+  const dy = cy - closestY;
+  return dx*dx + dy*dy <= r*r;
+}
+
 /* ======= Core Game State Manager ======= */
 const STATES = {
   LOADING: 'LOADING', MENU: 'MENU', SHOP: 'SHOP', CUSTOMIZE: 'CUSTOMIZE', TUTORIAL: 'TUTORIAL', SETTINGS: 'SETTINGS',
@@ -441,8 +453,13 @@ class Player {
     // }
   }
   getAABB() {
-    // 2% forgiveness shrink
-    const shw = this.width * 0.02; const shh = this.height * 0.02;
+    // forgiveness shrink – circles get a bit more since their bounding box
+    // over‑estimates the actual occupied area at the corners.
+    const baseShrink = 0.02;
+    const extraCircle = (this.shape === 'circle' ? 0.08 : 0); // 10% total for circles
+    const shrink = baseShrink + extraCircle;
+    const shw = this.width * shrink;
+    const shh = this.height * shrink;
     // use world-relative horizontal position: distance
     const worldX = (this.distance || 0);
     return { x: worldX - this.width/2 + shw, y: this.y - this.height/2 + shh, w: this.width - shw*2, h: this.height - shh*2 };
@@ -732,7 +749,18 @@ class MapGenerator {
     // platform surfaces
     for (const s of this.segments) {
       const plat = { x: s.x, y: s.platformY, w: s.w, h: 20 };
-      if (rectsIntersect(a, plat)) {
+      let intersects = rectsIntersect(a, plat);
+      // for round shape, bounding box can overlap a platform corner even
+      // though the circle is still above it; check true circle/rect
+      if (intersects && player.shape === 'circle') {
+        const cx = player.distance || 0;
+        const cy = player.y;
+        const r = player.width/2;
+        if (!circleRectIntersect(cx, cy, r, plat)) {
+          intersects = false;
+        }
+      }
+      if (intersects) {
         if (player.gravityDir === 1 && player.vy >= 0) { player.y = s.platformY - player.height/2; return true; }
         else if (player.gravityDir === -1 && player.vy <= 0) { player.y = s.platformY + 20 + player.height/2; return true; }
         // intersection occurred but not landing (e.g. rising into platform) – ignore
@@ -742,7 +770,6 @@ class MapGenerator {
         if (ob.type === 'pillar') {
           const pb = { x: ob.x - ob.w/2, y: ob.y - ob.h/2, w: ob.w, h: ob.h };
           if (rectsIntersect(a, pb)) return true;
-        } else if (ob.type === 'moving') {
           const phase = (runTime + ob.phase) * (2 * Math.PI) / ob.period;
           const curY = ob.baseY + Math.sin(phase) * ob.amp;
           const mb = { x: ob.x - ob.w/2, y: curY, w: ob.w, h: ob.h };
