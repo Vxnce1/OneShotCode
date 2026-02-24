@@ -15,6 +15,7 @@ const CONFIG = {
   coyoteTimeMs: 100,
   inputBufferMs: 100,
   pauseDebounceMs: 200,
+  circleCollisionMargin: 8, // pixels to shrink the effective radius for circle-shaped player
 };
 
 // Derived constants
@@ -65,12 +66,15 @@ function rectsIntersect(a,b){
 // round player shape so landing tests aren’t triggered when the
 // bounding box merely grazes a platform edge.
 function circleRectIntersect(cx, cy, r, rect) {
+  // shrink the radius slightly to give the player some breathing room; it's
+  // easier to jump and pass close obstacles.
+  const mr = Math.max(0, r - (CONFIG.circleCollisionMargin || 0));
   // find closest point on rect to circle center
   const closestX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
   const closestY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
   const dx = cx - closestX;
   const dy = cy - closestY;
-  return dx*dx + dy*dy <= r*r;
+  return dx*dx + dy*dy <= mr*mr;
 }
 
 /* ======= Core Game State Manager ======= */
@@ -474,7 +478,16 @@ class Player {
     const shh = this.height * shrink;
     // use world-relative horizontal position: distance
     const worldX = (this.distance || 0);
-    return { x: worldX - this.width/2 + shw, y: this.y - this.height/2 + shh, w: this.width - shw*2, h: this.height - shh*2 };
+    let aabb = { x: worldX - this.width/2 + shw, y: this.y - this.height/2 + shh, w: this.width - shw*2, h: this.height - shh*2 };
+    if (this.shape === 'circle' && CONFIG.circleCollisionMargin) {
+      // carve off a fixed pixel margin as well
+      const m = CONFIG.circleCollisionMargin;
+      aabb.x += m;
+      aabb.y += m;
+      aabb.w = Math.max(0, aabb.w - m*2);
+      aabb.h = Math.max(0, aabb.h - m*2);
+    }
+    return aabb;
   }
   render(cx, centerX, centerY, opacity=1) {
     push(); translate(centerX, this.y);
@@ -756,16 +769,31 @@ class MapGenerator {
   }
   resolvePlatformCollision(player, runTime=0) {
     const a = player.getAABB();
-    // ground and ceiling
+    // ground and ceiling (shape-specific for circles)
     if (player.gravityDir === 1) {
-      if (a.y + a.h >= this.worldBottom) {
-        player.y = this.worldBottom - player.height/2;
-        return true;
+      if (player.shape === 'circle') {
+        const cx = player.distance || 0;
+        const cy = player.y;
+        const r = player.width/2 - (CONFIG.circleCollisionMargin||0);
+        if (cy + r >= this.worldBottom) {
+          player.y = this.worldBottom - r;
+          return true;
+        }
+      } else {
+        if (a.y + a.h >= this.worldBottom) {
+          player.y = this.worldBottom - player.height/2;
+          return true;
+        }
       }
     } else {
-      if (a.y <= this.worldTop) {
-        player.y = this.worldTop + player.height/2;
-        return true;
+      // circle players are allowed to go off the top of the screen; this
+      // avoids the jump‑to‑ceiling glitch.  We still keep the AABB check for
+      // square/x shapes so they can't escape the world bounds.
+      if (player.shape !== 'circle') {
+        if (a.y <= this.worldTop) {
+          player.y = this.worldTop + player.height/2;
+          return true;
+        }
       }
     }
     // platform surfaces
