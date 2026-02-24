@@ -441,10 +441,28 @@ class Player {
     // no rotation
     noFill(); stroke(255); strokeWeight(2);
     fill(this.color[0], this.color[1], this.color[2], 220*opacity);
-    if (this.shape === 'circle') ellipse(0,0,this.width,this.height);
-    else if (this.shape === 'square') rectMode(CENTER), rect(0,0,this.width,this.height);
-    else if (this.shape === 'x') { // X drawn as static cross
-      rectMode(CENTER); push(); rotate(PI/4); rect(0,0,this.width,this.height); pop();
+    if (this.shape === 'circle') {
+      ellipse(0,0,this.width,this.height);
+    } else if (this.shape === 'square') {
+      rectMode(CENTER); rect(0,0,this.width,this.height);
+    } else if (this.shape === 'x') {
+      // draw literal letter X using two lines
+      strokeWeight(4);
+      line(-this.width/2, -this.height/2, this.width/2, this.height/2);
+      line(-this.width/2, this.height/2, this.width/2, -this.height/2);
+      strokeWeight(2);
+    } else if (this.shape === 'star') {
+      // draw a simple five-point star inside the bounding box
+      const r = this.width/2;
+      const r2 = r * 0.5;
+      beginShape();
+      for (let i=0;i<5;i++){
+        let a = -HALF_PI + i * TWO_PI/5;
+        vertex(cos(a)*r, sin(a)*r);
+        a += PI/5;
+        vertex(cos(a)*r2, sin(a)*r2);
+      }
+      endShape(CLOSE);
     }
     pop();
   }
@@ -1196,7 +1214,7 @@ function drawMenu() {
 function drawShop(manager) {
   push(); fill(255); textSize(20); textAlign(CENTER, TOP);
   text('Shop', width/2, 24);
-  const items = [{name:'circle',price:0},{name:'square',price:0},{name:'x',price:0}];
+  const items = [{name:'circle',price:0},{name:'square',price:0},{name:'x',price:0},{name:'star',price:100}];
   const startX = width/2 - 200; const y = 120; const w = 120; const h = 120; const gap = 40;
   for (let i=0;i<items.length;i++){
     const it = items[i]; const x = startX + i*(w+gap);
@@ -1261,9 +1279,34 @@ function drawCustomize(manager) {
     if (manager.selectedColor && manager.selectedColor[0]===col[0] && manager.selectedColor[1]===col[1]) { noFill(); stroke(255,235,0); rect(startX + i*(s+12), startY, s, s,6); }
   }
   // live preview center
-  fill(manager.selectedColor[0], manager.selectedColor[1], manager.selectedColor[2]); stroke(255); ellipse(width/2, height/2 - 20, 120);
+  fill(manager.selectedColor[0], manager.selectedColor[1], manager.selectedColor[2]); stroke(255);
+  const shp = manager.selectedShape || 'square';
+  const px = width/2, py = height/2 - 20, ps = 120;
+  if (shp === 'circle') {
+    ellipse(px, py, ps);
+  } else if (shp === 'square') {
+    rectMode(CENTER); rect(px, py, ps, ps);
+  } else if (shp === 'x') {
+    const half = ps/2;
+    strokeWeight(4);
+    line(px-half, py-half, px+half, py+half);
+    line(px-half, py+half, px+half, py-half);
+    strokeWeight(2);
+  } else if (shp === 'star') {
+    // draw a simple five-point star
+    const r = ps/2;
+    const r2 = r * 0.5;
+    beginShape();
+    for (let i=0;i<5;i++){
+      let a = -HALF_PI + i * TWO_PI/5;
+      vertex(cos(a)*r, sin(a)*r);
+      a += PI/5;
+      vertex(cos(a)*r2, sin(a)*r2);
+    }
+    endShape(CLOSE);
+  }
   // shapes bottom
-  const shapes = ['circle','square','x']; const sy = height - 140; const sw = 80;
+  const shapes = ['circle','square','x','star']; const sy = height - 140; const sw = 80;
   for (let i=0;i<shapes.length;i++){ const nm = shapes[i]; const sx = width/2 - (shapes.length*(sw+16))/2 + i*(sw+16);
     fill(20); stroke(255); rect(sx, sy, sw, sw,8);
     fill(255); textAlign(CENTER, CENTER); text(nm, sx+sw/2, sy+14);
@@ -1307,7 +1350,7 @@ function mousePressed() {
       return;
     }
     // detect clicks on shop items
-    const items = [{name:'circle',price:0},{name:'square',price:0},{name:'x',price:0}];
+    const items = [{name:'circle',price:0},{name:'square',price:0},{name:'x',price:0},{name:'star',price:100}];
     const startX = width/2 - 200; const y = 120; const w = 120; const h = 120; const gap = 40;
     for (let i=0;i<items.length;i++){
       const x = startX + i*(w+gap);
@@ -1342,11 +1385,12 @@ function mousePressed() {
       if (mX >= x && mX <= x+s && mY >= startY && mY <= startY+s) { globalManager.pickColor(palette[i]); return; }
     }
     // shapes bottom
-    const shapes = ['circle','square','x']; const sy = height - 140; const sw = 80;
+    const shapes = ['circle','square','x','star']; const sy = height - 140; const sw = 80;
     for (let i=0;i<shapes.length;i++){ const sx = width/2 - (shapes.length*(sw+16))/2 + i*(sw+16);
       if (mX >= sx && mX <= sx+sw && mY >= sy && mY <= sy+sw) {
-        const nm = shapes[i]; if (globalManager.purchasedShapes.indexOf(nm) === -1) { globalManager.pendingPurchase = { name: nm, price: nm==='x'?50:0 }; }
-        else { globalManager.equipShape(nm); }
+        const nm = shapes[i]; if (globalManager.purchasedShapes.indexOf(nm) === -1) {
+          globalManager.pendingPurchase = { name: nm, price: nm==='x'?50:(nm==='star'?100:0) };
+        } else { globalManager.equipShape(nm); }
         return;
       }
     }
