@@ -15,7 +15,7 @@ const CONFIG = {
   coyoteTimeMs: 100,
   inputBufferMs: 100,
   pauseDebounceMs: 200,
-  circleCollisionMargin: 2, // pixels to shrink the effective radius for circle-shaped player
+  circleCollisionMargin: 0, // no special margin; all shapes use identical hitboxes
 };
 
 // Derived constants
@@ -62,20 +62,7 @@ function rectsIntersect(a,b){
   return !(a.x + a.w < b.x || a.x > b.x + b.w || a.y + a.h < b.y || a.y > b.y + b.h);
 }
 
-// circle vs rect intersection using closest-point method.  Used for
-// round player shape so landing tests aren’t triggered when the
-// bounding box merely grazes a platform edge.
-function circleRectIntersect(cx, cy, r, rect) {
-  // shrink the radius slightly to give the player some breathing room; it's
-  // easier to jump and pass close obstacles.
-  const mr = Math.max(0, r - (CONFIG.circleCollisionMargin || 0));
-  // find closest point on rect to circle center
-  const closestX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
-  const closestY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
-  const dx = cx - closestX;
-  const dy = cy - closestY;
-  return dx*dx + dy*dy <= mr*mr;
-}
+
 
 /* ======= Core Game State Manager ======= */
 const STATES = {
@@ -340,8 +327,7 @@ class Player {
     this.width = 40; this.height = 40;
     this.grounded = false;
     this.gravityDir = 1; // 1 down, -1 up
-    this.rotation = 0;
-    this.rotationVel = 0;
+    // rotation no longer used
     this.shape = 'square';
     this.color = [0,255,200];
     this.lastJumpTime = -9999;
@@ -370,12 +356,7 @@ class Player {
       this.vy = CONFIG.initialJumpVelocity * this.gravityDir; // sign with gravity
       this.grounded = false;
       this.lastJumpTime = tNow;
-      // rotation on jump for square and x shapes
-      if (this.shape === 'square' || this.shape === 'x') {
-        const dir = this.gravityDir === 1 ? 1 : -1;
-        // start spinning in air instead of instant jump
-        this.rotationVel = 360 * dir; // degrees per second
-      }
+      // no rotation on jump
       // emit jump particles
       // if (this.manager && this.manager.particles) this.manager.particles.emit(this.distance, this.y, 8, this.color);
       return true;
@@ -395,7 +376,7 @@ class Player {
       const prevY = this.y;
       this.y += this.vy * stepDt;
       // collision check with obstacles and spikes
-      const lethal = world.checkLethalCollision(this.getAABB(), this.shape);
+      const lethal = world.checkLethalCollision(this.getAABB());
       if (lethal) {
         this.alive = false;
         world.onPlayerDeath(this);
@@ -407,7 +388,6 @@ class Player {
         this.grounded = true;
         this.vy = 0;
         this.coyoteUntil = -9999;
-        // landing particles (optional)
       } else {
         if (wasGrounded) this.coyoteUntil = tNow + (CONFIG.coyoteTimeMs/1000);
         this.grounded = false;
@@ -416,8 +396,8 @@ class Player {
     // check if fallen off map
     const bottomBound = globalManager.map ? globalManager.map.worldBottom : height;
     const topBound = globalManager.map ? globalManager.map.worldTop : 0;
-    // fall off bottom or (for non-circles) fly out the top
-    if (this.y > bottomBound + 10 || (this.shape !== 'circle' && this.y < topBound - 10)) {
+    // fall off bottom only
+    if (this.y > bottomBound + 10) {
       this.alive = false;
       world.onPlayerDeath(this);
       return;
@@ -433,13 +413,11 @@ class Player {
     // rotation update
     if (!this.grounded) {
       // spin while airborne
-      this.rotation += this.rotationVel * dt;
+      // rotation disabled
     }
     // smooth rotation when grounded
     if (this.grounded) {
-      this.rotationVel *= 0.3;
-      this.rotation *= 0.6;
-      if (Math.abs(this.rotation) < 0.5) this.rotation = 0;
+      // no rotation smoothing needed
     }
     // trail particles
     // this.trailTimer = (this.trailTimer || 0) + dt;
@@ -449,35 +427,23 @@ class Player {
     // }
   }
   getAABB() {
-    // forgiveness shrink – circles get a bit more since their bounding box
-    // over‑estimates the actual occupied area at the corners.
-    const baseShrink = 0.02;
-    const extraCircle = (this.shape === 'circle' ? 0.01 : 0); // a bit more for round shapes, but keep small
-    const shrink = baseShrink + extraCircle;
+    // small constant shrink to avoid pixel-perfect clipping
+    const shrink = 0.02;
     const shw = this.width * shrink;
     const shh = this.height * shrink;
-    // use world-relative horizontal position: distance
     const worldX = (this.distance || 0);
-    let aabb = { x: worldX - this.width/2 + shw, y: this.y - this.height/2 + shh, w: this.width - shw*2, h: this.height - shh*2 };
-    if (this.shape === 'circle' && CONFIG.circleCollisionMargin) {
-      // carve off a fixed pixel margin as well
-      const m = CONFIG.circleCollisionMargin;
-      aabb.x += m;
-      aabb.y += m;
-      aabb.w = Math.max(0, aabb.w - m*2);
-      aabb.h = Math.max(0, aabb.h - m*2);
-    }
-    return aabb;
+    return { x: worldX - this.width/2 + shw, y: this.y - this.height/2 + shh,
+             w: this.width - shw*2, h: this.height - shh*2 };
   }
   render(cx, centerX, centerY, opacity=1) {
     push(); translate(centerX, this.y);
     // visual glow disabled
-    rotate(radians(this.rotation));
+    // no rotation
     noFill(); stroke(255); strokeWeight(2);
     fill(this.color[0], this.color[1], this.color[2], 220*opacity);
     if (this.shape === 'circle') ellipse(0,0,this.width,this.height);
     else if (this.shape === 'square') rectMode(CENTER), rect(0,0,this.width,this.height);
-    else if (this.shape === 'x') { // X drawn as rotated square
+    else if (this.shape === 'x') { // X drawn as static cross
       rectMode(CENTER); push(); rotate(PI/4); rect(0,0,this.width,this.height); pop();
     }
     pop();
@@ -721,101 +687,50 @@ class MapGenerator {
   // shape is optional; when omitted behaviour is identical to the
   // previous AABB-only version.  Passing 'circle' allows tighter tests so the
   // ball won't die simply because its box grazes a spike or pillar.
-  checkLethalCollision(aabb, shape) {
-    const isCircle = shape === 'circle';
-    const cx = aabb.x + aabb.w/2;
-    const cy = aabb.y + aabb.h/2;
-    // use a slightly smaller radius than the AABB for circles
-    let r = aabb.w/2;
-    if (isCircle) r = Math.max(0, r - (CONFIG.circleCollisionMargin||0));
+  checkLethalCollision(aabb) {
+    // simple rectangle intersection for spikes and pillars
     for (const s of this.segments) {
       // spikes
       if (s.spikes) for (const sp of s.spikes) {
         const bx = sp.x; const bw = sp.w;
         const spikeBox = { x: bx - bw/2, y: sp.side==='floor'? s.platformY : this.worldTop-32, w: bw, h: 32 };
-        if (isCircle) {
-          if (circleRectIntersect(cx, cy, r, spikeBox)) return true;
-        } else if (rectsIntersect(aabb, spikeBox)) return true;
+        if (rectsIntersect(aabb, spikeBox)) return true;
       }
       // pillars
       if (s.obstacles) for (const ob of s.obstacles) {
         if (ob.type === 'pillar') {
           const pb = { x: ob.x - ob.w/2, y: ob.y - ob.h/2, w: ob.w, h: ob.h };
-          if (isCircle) {
-            if (circleRectIntersect(cx, cy, r, pb)) return true;
-          } else if (rectsIntersect(aabb, pb)) return true;
+          if (rectsIntersect(aabb, pb)) return true;
         }
       }
     }
     return false;
   }
-  // prevY is optional previous vertical position, used by Player.update
   resolvePlatformCollision(player, runTime=0, prevY) {
     const a = player.getAABB();
-    const isCircle = player.shape === 'circle';
-    const cx = player.distance || 0;
-    // ground and ceiling (shape-specific for circles)
+    // ground and ceiling
     if (player.gravityDir === 1) {
-      if (player.shape === 'circle') {
-        const cx = player.distance || 0;
-        const cy = player.y;
-        const r = player.width/2 - (CONFIG.circleCollisionMargin||0);
-        if (cy + r >= this.worldBottom) {
-          player.y = this.worldBottom - r;
-          return true;
-        }
-      } else {
-        if (a.y + a.h >= this.worldBottom) {
-          player.y = this.worldBottom - player.height/2;
-          return true;
-        }
+      if (a.y + a.h >= this.worldBottom) {
+        player.y = this.worldBottom - player.height/2;
+        return true;
       }
     } else {
-      // circle players are allowed to go off the top of the screen; this
-      // avoids the jump‑to‑ceiling glitch.  We still keep the AABB check for
-      // square/x shapes so they can't escape the world bounds.
-      if (player.shape !== 'circle') {
-        if (a.y <= this.worldTop) {
-          player.y = this.worldTop + player.height/2;
-          return true;
-        }
+      if (a.y <= this.worldTop) {
+        player.y = this.worldTop + player.height/2;
+        return true;
       }
     }
-    // platform surfaces
+    // platform surfaces (everything uses the same AABB check)
     for (const s of this.segments) {
-      const platX = s.x; const platY = s.platformY; const platW = s.w;
-      if (isCircle) {
-        const r = player.width/2 - (CONFIG.circleCollisionMargin||0);
-        const prevBottom = (typeof prevY === 'number' ? prevY : player.y) + r;
-        const currBottom = player.y + r;
-        // horizontal overlap
-        if (cx + r >= platX && cx - r <= platX + platW) {
-          if (player.gravityDir === 1 && player.vy > 0) {
-            // crossed from above?
-            if (prevBottom <= platY && currBottom >= platY) {
-              player.y = platY - player.height/2;
-              return true;
-            }
-          } else if (player.gravityDir === -1 && player.vy < 0) {
-            if (prevBottom >= platY + 20 && currBottom <= platY + 20) {
-              player.y = platY + 20 + player.height/2;
-              return true;
-            }
-          }
-        }
-      } else {
-        const plat = { x: s.x, y: s.platformY, w: s.w, h: 20 };
-        if (rectsIntersect(a, plat)) {
-          if (player.gravityDir === 1 && player.vy >= 0) { player.y = s.platformY - player.height/2; return true; }
-          else if (player.gravityDir === -1 && player.vy <= 0) { player.y = s.platformY + 20 + player.height/2; return true; }
-          // intersection occurred but not landing (e.g. rising into platform) – ignore
-        }
+      const plat = { x: s.x, y: s.platformY, w: s.w, h: 20 };
+      if (rectsIntersect(a, plat)) {
+        if (player.gravityDir === 1 && player.vy >= 0) { player.y = s.platformY - player.height/2; return true; }
+        else if (player.gravityDir === -1 && player.vy <= 0) { player.y = s.platformY + 20 + player.height/2; return true; }
       }
       // dynamic obstacles
       if (s.obstacles) for (const ob of s.obstacles) {
-        if (ob.type === 'pillar') {
-          const pb = { x: ob.x - ob.w/2, y: ob.y - ob.h/2, w: ob.w, h: ob.h };
-          if (rectsIntersect(a, pb)) return true;
+        // pillars are handled by lethal collision; do not treat as platform
+        if (ob.type === 'moving') {
           const phase = (runTime + ob.phase) * (2 * Math.PI) / ob.period;
           const curY = ob.baseY + Math.sin(phase) * ob.amp;
           const mb = { x: ob.x - ob.w/2, y: curY, w: ob.w, h: ob.h };
@@ -1148,7 +1063,7 @@ function draw() {
     //   }
     // }
     // world wrapper
-    const world = { checkLethalCollision: (a,sh)=>globalManager.map.checkLethalCollision(a,sh), resolvePlatformCollision: (p,prevY)=>globalManager.map.resolvePlatformCollision(p, runTime, prevY), speed: globalManager.map.speed, onPlayerDeath: (p)=>onPlayerDeath(p)};
+    const world = { checkLethalCollision: (a)=>globalManager.map.checkLethalCollision(a), resolvePlatformCollision: (p,prevY)=>globalManager.map.resolvePlatformCollision(p, runTime, prevY), speed: globalManager.map.speed, onPlayerDeath: (p)=>onPlayerDeath(p)};
     // update players
     const tNow = globalManager.runTime;
     for (let i=0;i<globalManager.players.length;i++) {
@@ -1281,7 +1196,7 @@ function drawMenu() {
 function drawShop(manager) {
   push(); fill(255); textSize(20); textAlign(CENTER, TOP);
   text('Shop', width/2, 24);
-  const items = [{name:'circle',price:0},{name:'square',price:0},{name:'x',price:50}];
+  const items = [{name:'circle',price:0},{name:'square',price:0},{name:'x',price:0}];
   const startX = width/2 - 200; const y = 120; const w = 120; const h = 120; const gap = 40;
   for (let i=0;i<items.length;i++){
     const it = items[i]; const x = startX + i*(w+gap);
@@ -1293,7 +1208,11 @@ function drawShop(manager) {
       fill(0,0,0,140); rect(x,y,w,h,8);
       fill(255,255,255); text('LOCKED', x+w/2, y+h-18);
     } else {
-      fill(0,200,255); text('Owned', x+w/2, y+36);
+      if (manager.selectedShape === it.name) {
+        fill(50,255,50); text('Equipped', x+w/2, y+36);
+      } else {
+        fill(0,200,255); text('Owned', x+w/2, y+36);
+      }
     }
   }
   // coins and back
@@ -1388,7 +1307,7 @@ function mousePressed() {
       return;
     }
     // detect clicks on shop items
-    const items = [{name:'circle',price:0},{name:'square',price:0},{name:'x',price:50}];
+    const items = [{name:'circle',price:0},{name:'square',price:0},{name:'x',price:0}];
     const startX = width/2 - 200; const y = 120; const w = 120; const h = 120; const gap = 40;
     for (let i=0;i<items.length;i++){
       const x = startX + i*(w+gap);
