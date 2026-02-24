@@ -895,8 +895,6 @@ function keyPressed() {
     if (globalManager.state === STATES.PLAYING_SINGLE || globalManager.state === STATES.TUTORIAL) {
       const tNow = globalManager.runTime; if (!globalManager.players[0].attemptJump(tNow)) globalManager.players[0].inputBufferUntil = tNow + (CONFIG.inputBufferMs/1000);
     }
-      const tNow = globalManager.runTime; if (!globalManager.players[0].attemptJump(tNow)) globalManager.players[0].inputBufferUntil = tNow + (CONFIG.inputBufferMs/1000);
-    }
   }
   // Check jump-rings when pressing jump: if overlapping, apply ring strength
   if (globalManager.state === STATES.PLAYING_SINGLE) {
