@@ -390,7 +390,7 @@ class Player {
     for (let s=0;s<steps;s++) {
       this.y += this.vy * stepDt;
       // collision check with obstacles and spikes
-      const lethal = world.checkLethalCollision(this.getAABB());
+      const lethal = world.checkLethalCollision(this.getAABB(), this.shape);
       if (lethal) {
         // freeze physics immediately, trigger death visuals
         this.alive = false;
@@ -421,11 +421,23 @@ class Player {
       world.onPlayerDeath(this);
       return;
     }
-    // if velocity is essentially zero while airborne, assume stuck
+    // if velocity is essentially zero while airborne, assume stuck.  This
+    // rule was too aggressive when the circle shape floated just above a
+    // platform due to bogus AABB shrink.  Only kill if we're clearly not
+    // touching any surface.
     if (!this.grounded && Math.abs(this.vy) < 0.1) {
-      this.alive = false;
-      world.onPlayerDeath(this);
-      return;
+      // perform one more collision test; if it finds a platform we will
+      // treat the player as grounded instead of dying.
+      const maybePlat = world.resolvePlatformCollision(this, tNow);
+      if (!maybePlat) {
+        this.alive = false;
+        world.onPlayerDeath(this);
+        return;
+      } else {
+        // snapped to surface, mark grounded and clear velocity
+        this.grounded = true;
+        this.vy = 0;
+      }
     }
     // update distance
     this.distance += world.speed * dt;
@@ -456,7 +468,7 @@ class Player {
     // forgiveness shrink – circles get a bit more since their bounding box
     // over‑estimates the actual occupied area at the corners.
     const baseShrink = 0.02;
-    const extraCircle = (this.shape === 'circle' ? 0.08 : 0); // 10% total for circles
+    const extraCircle = (this.shape === 'circle' ? 0.03 : 0); // a bit more for round shapes, but keep small
     const shrink = baseShrink + extraCircle;
     const shw = this.width * shrink;
     const shh = this.height * shrink;
@@ -713,20 +725,30 @@ class MapGenerator {
     pushSeg(600, this.worldBottom-40);
   }
   // collision helpers
-  checkLethalCollision(aabb) {
-    // check spikes and pillar collisions
+  // shape is optional; when omitted behaviour is identical to the
+  // previous AABB-only version.  Passing 'circle' allows tighter tests so the
+  // ball won't die simply because its box grazes a spike or pillar.
+  checkLethalCollision(aabb, shape) {
+    const isCircle = shape === 'circle';
+    const cx = aabb.x + aabb.w/2;
+    const cy = aabb.y + aabb.h/2;
+    const r = aabb.w/2;
     for (const s of this.segments) {
       // spikes
       if (s.spikes) for (const sp of s.spikes) {
         const bx = sp.x; const bw = sp.w;
         const spikeBox = { x: bx - bw/2, y: sp.side==='floor'? s.platformY : this.worldTop-32, w: bw, h: 32 };
-        if (rectsIntersect(aabb, spikeBox)) return true;
+        if (isCircle) {
+          if (circleRectIntersect(cx, cy, r, spikeBox)) return true;
+        } else if (rectsIntersect(aabb, spikeBox)) return true;
       }
       // pillars
       if (s.obstacles) for (const ob of s.obstacles) {
         if (ob.type === 'pillar') {
           const pb = { x: ob.x - ob.w/2, y: ob.y - ob.h/2, w: ob.w, h: ob.h };
-          if (rectsIntersect(aabb, pb)) return true;
+          if (isCircle) {
+            if (circleRectIntersect(cx, cy, r, pb)) return true;
+          } else if (rectsIntersect(aabb, pb)) return true;
         }
       }
     }
@@ -749,16 +771,16 @@ class MapGenerator {
     // platform surfaces
     for (const s of this.segments) {
       const plat = { x: s.x, y: s.platformY, w: s.w, h: 20 };
-      let intersects = rectsIntersect(a, plat);
-      // for round shape, bounding box can overlap a platform corner even
-      // though the circle is still above it; check true circle/rect
-      if (intersects && player.shape === 'circle') {
+      let intersects;
+      if (player.shape === 'circle') {
+        // use precise circle/rect check so shrink on AABB can't skip valid
+        // landings containing the ball exactly on top.
         const cx = player.distance || 0;
         const cy = player.y;
         const r = player.width/2;
-        if (!circleRectIntersect(cx, cy, r, plat)) {
-          intersects = false;
-        }
+        intersects = circleRectIntersect(cx, cy, r, plat);
+      } else {
+        intersects = rectsIntersect(a, plat);
       }
       if (intersects) {
         if (player.gravityDir === 1 && player.vy >= 0) { player.y = s.platformY - player.height/2; return true; }
@@ -1101,7 +1123,7 @@ function draw() {
     //   }
     // }
     // world wrapper
-    const world = { checkLethalCollision: (a)=>globalManager.map.checkLethalCollision(a), resolvePlatformCollision: (p)=>globalManager.map.resolvePlatformCollision(p), speed: globalManager.map.speed, onPlayerDeath: (p)=>onPlayerDeath(p)};
+    const world = { checkLethalCollision: (a,sh)=>globalManager.map.checkLethalCollision(a,sh), resolvePlatformCollision: (p)=>globalManager.map.resolvePlatformCollision(p), speed: globalManager.map.speed, onPlayerDeath: (p)=>onPlayerDeath(p)};
     // update players
     const tNow = globalManager.runTime;
     for (let i=0;i<globalManager.players.length;i++) {
