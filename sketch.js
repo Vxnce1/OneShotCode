@@ -392,57 +392,37 @@ class Player {
     const stepDt = dt / steps;
     const wasGrounded = this.grounded;
     for (let s=0;s<steps;s++) {
+      const prevY = this.y;
       this.y += this.vy * stepDt;
       // collision check with obstacles and spikes
       const lethal = world.checkLethalCollision(this.getAABB(), this.shape);
       if (lethal) {
-        // freeze physics immediately, trigger death visuals
         this.alive = false;
         world.onPlayerDeath(this);
         return;
       }
       // resolve platforms landing only if no lethal
-      const landed = world.resolvePlatformCollision(this, tNow);
+      const landed = world.resolvePlatformCollision(this, tNow, prevY);
       if (landed) {
         this.grounded = true;
         this.vy = 0;
-        // reset coyote window (will only be used when walking off)
         this.coyoteUntil = -9999;
-        // landing particles (only when falling into landing)
-        // if (this.manager && this.manager.particles && !wasGrounded) this.manager.particles.emit(this.distance, this.y+4, 12, [150,220,255]);
-        // if (this.manager && this.manager.ripples && !wasGrounded) this.manager.ripples.push({ x: this.distance, y: this.y+6, time: 0, life: 0.6, maxR: 120 });
+        // landing particles (optional)
       } else {
-        // if we just left the ground, start coyote window
         if (wasGrounded) this.coyoteUntil = tNow + (CONFIG.coyoteTimeMs/1000);
         this.grounded = false;
       }
     }
-    // check if fallen off the map or outside world bounds
+    // check if fallen off map
     const bottomBound = globalManager.map ? globalManager.map.worldBottom : height;
     const topBound = globalManager.map ? globalManager.map.worldTop : 0;
-    if (this.y > bottomBound + 10 || this.y < topBound - 10) {
+    // fall off bottom or (for non-circles) fly out the top
+    if (this.y > bottomBound + 10 || (this.shape !== 'circle' && this.y < topBound - 10)) {
       this.alive = false;
       world.onPlayerDeath(this);
       return;
     }
-    // if velocity is essentially zero while airborne, assume stuck.  This
-    // rule was too aggressive when the circle shape floated just above a
-    // platform due to bogus AABB shrink.  Only kill if we're clearly not
-    // touching any surface.
-    if (!this.grounded && Math.abs(this.vy) < 0.1) {
-      // perform one more collision test; if it finds a platform we will
-      // treat the player as grounded instead of dying.
-      const maybePlat = world.resolvePlatformCollision(this, tNow);
-      if (!maybePlat) {
-        this.alive = false;
-        world.onPlayerDeath(this);
-        return;
-      } else {
-        // snapped to surface, mark grounded and clear velocity
-        this.grounded = true;
-        this.vy = 0;
-      }
-    }
+    // remove stuck‑air death hack; not needed with proper cross‑check
     // update distance
     this.distance += world.speed * dt;
     // if we landed and have an input buffered, trigger jump
@@ -745,7 +725,9 @@ class MapGenerator {
     const isCircle = shape === 'circle';
     const cx = aabb.x + aabb.w/2;
     const cy = aabb.y + aabb.h/2;
-    const r = aabb.w/2;
+    // use a slightly smaller radius than the AABB for circles
+    let r = aabb.w/2;
+    if (isCircle) r = Math.max(0, r - (CONFIG.circleCollisionMargin||0));
     for (const s of this.segments) {
       // spikes
       if (s.spikes) for (const sp of s.spikes) {
@@ -767,8 +749,11 @@ class MapGenerator {
     }
     return false;
   }
-  resolvePlatformCollision(player, runTime=0) {
+  // prevY is optional previous vertical position, used by Player.update
+  resolvePlatformCollision(player, runTime=0, prevY) {
     const a = player.getAABB();
+    const isCircle = player.shape === 'circle';
+    const cx = player.distance || 0;
     // ground and ceiling (shape-specific for circles)
     if (player.gravityDir === 1) {
       if (player.shape === 'circle') {
@@ -799,26 +784,20 @@ class MapGenerator {
     // platform surfaces
     for (const s of this.segments) {
       const platX = s.x; const platY = s.platformY; const platW = s.w;
-      if (player.shape === 'circle') {
-        // landing check for circles: only consider the *top surface* of the
-        // platform.  Side/edge overlaps should not count as a landing.
-        if (player.gravityDir === 1 && player.vy >= 0) {
-          const cx = player.distance || 0;
-          const r = player.width/2 - (CONFIG.circleCollisionMargin||0);
-          // horizontal overlap between circle's radius and platform width
-          if (cx + r >= platX && cx - r <= platX + platW) {
-            // check if bottom of circle has reached the top of the platform
-            if (player.y + r >= platY - 1) {
+      if (isCircle) {
+        const r = player.width/2 - (CONFIG.circleCollisionMargin||0);
+        const prevBottom = (typeof prevY === 'number' ? prevY : player.y) + r;
+        const currBottom = player.y + r;
+        // horizontal overlap
+        if (cx + r >= platX && cx - r <= platX + platW) {
+          if (player.gravityDir === 1 && player.vy > 0) {
+            // crossed from above?
+            if (prevBottom <= platY && currBottom >= platY) {
               player.y = platY - player.height/2;
               return true;
             }
-          }
-        } else if (player.gravityDir === -1 && player.vy <= 0) {
-          // similar logic for inverted gravity (circle hitting underside)
-          const cx = player.distance || 0;
-          const r = player.width/2 - (CONFIG.circleCollisionMargin||0);
-          if (cx + r >= platX && cx - r <= platX + platW) {
-            if (player.y - r <= platY + 20 + 1) {
+          } else if (player.gravityDir === -1 && player.vy < 0) {
+            if (prevBottom >= platY + 20 && currBottom <= platY + 20) {
               player.y = platY + 20 + player.height/2;
               return true;
             }
@@ -946,7 +925,8 @@ class World {
   constructor(map) { this.map = map; this.speed = map.speed; }
   update(dt) { this.speed = this.map.speed; }
   checkLethalCollision(aabb) { return this.map.checkLethalCollision(aabb); }
-  resolvePlatformCollision(player, runTime) { return this.map.resolvePlatformCollision(player, runTime); }
+  // prevY optional for swept circle collisions
+  resolvePlatformCollision(player, runTime, prevY) { return this.map.resolvePlatformCollision(player, runTime, prevY); }
   onPlayerDeath(player) {
     // handle world-level death
   }
@@ -1168,13 +1148,13 @@ function draw() {
     //   }
     // }
     // world wrapper
-    const world = { checkLethalCollision: (a,sh)=>globalManager.map.checkLethalCollision(a,sh), resolvePlatformCollision: (p)=>globalManager.map.resolvePlatformCollision(p), speed: globalManager.map.speed, onPlayerDeath: (p)=>onPlayerDeath(p)};
+    const world = { checkLethalCollision: (a,sh)=>globalManager.map.checkLethalCollision(a,sh), resolvePlatformCollision: (p,prevY)=>globalManager.map.resolvePlatformCollision(p, runTime, prevY), speed: globalManager.map.speed, onPlayerDeath: (p)=>onPlayerDeath(p)};
     // update players
     const tNow = globalManager.runTime;
     for (let i=0;i<globalManager.players.length;i++) {
       const p = globalManager.players[i];
       if (!p.alive) continue;
-      p.update(dt, tNow, globalManager.map);
+      p.update(dt, tNow, globalManager.map); // map provided only for speed currently
     }
     // tutorial completion check
     if (globalManager.state === STATES.TUTORIAL) {
