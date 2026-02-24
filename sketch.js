@@ -15,7 +15,7 @@ const CONFIG = {
   coyoteTimeMs: 100,
   inputBufferMs: 100,
   pauseDebounceMs: 200,
-  circleCollisionMargin: 8, // pixels to shrink the effective radius for circle-shaped player
+  circleCollisionMargin: 2, // pixels to shrink the effective radius for circle-shaped player
 };
 
 // Derived constants
@@ -472,7 +472,7 @@ class Player {
     // forgiveness shrink – circles get a bit more since their bounding box
     // over‑estimates the actual occupied area at the corners.
     const baseShrink = 0.02;
-    const extraCircle = (this.shape === 'circle' ? 0.03 : 0); // a bit more for round shapes, but keep small
+    const extraCircle = (this.shape === 'circle' ? 0.01 : 0); // a bit more for round shapes, but keep small
     const shrink = baseShrink + extraCircle;
     const shw = this.width * shrink;
     const shh = this.height * shrink;
@@ -798,22 +798,39 @@ class MapGenerator {
     }
     // platform surfaces
     for (const s of this.segments) {
-      const plat = { x: s.x, y: s.platformY, w: s.w, h: 20 };
-      let intersects;
+      const platX = s.x; const platY = s.platformY; const platW = s.w;
       if (player.shape === 'circle') {
-        // use precise circle/rect check so shrink on AABB can't skip valid
-        // landings containing the ball exactly on top.
-        const cx = player.distance || 0;
-        const cy = player.y;
-        const r = player.width/2;
-        intersects = circleRectIntersect(cx, cy, r, plat);
+        // landing check for circles: only consider the *top surface* of the
+        // platform.  Side/edge overlaps should not count as a landing.
+        if (player.gravityDir === 1 && player.vy >= 0) {
+          const cx = player.distance || 0;
+          const r = player.width/2 - (CONFIG.circleCollisionMargin||0);
+          // horizontal overlap between circle's radius and platform width
+          if (cx + r >= platX && cx - r <= platX + platW) {
+            // check if bottom of circle has reached the top of the platform
+            if (player.y + r >= platY - 1) {
+              player.y = platY - player.height/2;
+              return true;
+            }
+          }
+        } else if (player.gravityDir === -1 && player.vy <= 0) {
+          // similar logic for inverted gravity (circle hitting underside)
+          const cx = player.distance || 0;
+          const r = player.width/2 - (CONFIG.circleCollisionMargin||0);
+          if (cx + r >= platX && cx - r <= platX + platW) {
+            if (player.y - r <= platY + 20 + 1) {
+              player.y = platY + 20 + player.height/2;
+              return true;
+            }
+          }
+        }
       } else {
-        intersects = rectsIntersect(a, plat);
-      }
-      if (intersects) {
-        if (player.gravityDir === 1 && player.vy >= 0) { player.y = s.platformY - player.height/2; return true; }
-        else if (player.gravityDir === -1 && player.vy <= 0) { player.y = s.platformY + 20 + player.height/2; return true; }
-        // intersection occurred but not landing (e.g. rising into platform) – ignore
+        const plat = { x: s.x, y: s.platformY, w: s.w, h: 20 };
+        if (rectsIntersect(a, plat)) {
+          if (player.gravityDir === 1 && player.vy >= 0) { player.y = s.platformY - player.height/2; return true; }
+          else if (player.gravityDir === -1 && player.vy <= 0) { player.y = s.platformY + 20 + player.height/2; return true; }
+          // intersection occurred but not landing (e.g. rising into platform) – ignore
+        }
       }
       // dynamic obstacles
       if (s.obstacles) for (const ob of s.obstacles) {
