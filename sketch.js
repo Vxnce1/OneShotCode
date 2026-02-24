@@ -1135,7 +1135,6 @@ function draw() {
         p.render(null, centerX, p.y);
       }
       renderUI(globalManager);
-    }
   } else if (globalManager.state === STATES.PAUSED) {
     fill(255); textSize(32); textAlign(CENTER, CENTER); text('PAUSED', width/2, height/2 - 60);
     if (!window.resumeButton) {
