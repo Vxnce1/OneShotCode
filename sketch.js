@@ -337,6 +337,8 @@ class Player {
     this.width = 40; this.height = 40;
     this.grounded = false;
     this.gravityDir = 1; // 1 down, -1 up
+    this.rotation = 0; // in radians or degrees 
+    this.rotSpeed = 8; // tweak this for faster/slower spin
     // rotation no longer used
     this.shape = 'square';
     this.color = [0,255,200];
@@ -366,6 +368,7 @@ class Player {
       this.vy = CONFIG.initialJumpVelocity * this.gravityDir; // sign with gravity
       this.grounded = false;
       this.lastJumpTime = tNow;
+      this.rotation *= 0.8;
       // no rotation on jump
       // emit jump particles
       // if (this.manager && this.manager.particles) this.manager.particles.emit(this.distance, this.y, 8, this.color);
@@ -447,6 +450,8 @@ class Player {
   }
   render(cx, centerX, centerY, opacity=1) {
     push(); translate(centerX, this.y);
+    translate(width/2, this.y); // player is drawn centered on screen 
+    rotate(this.rotation);
     // visual glow disabled
     // no rotation
     noFill(); stroke(255); strokeWeight(2);
