@@ -485,8 +485,34 @@ class Player {
       const t = (this.manager.runTime || 0) * 2.0;
       const glow = 0.5 + 0.5 * Math.sin(t);
       const a = 60 + 120 * glow;
-      fill(col[0], col[1], col[2], a * opacity);
-      ellipse(0, 0, this.width * 1.8, this.height * 1.8);
+      // hide when very dim to avoid seeing ghosted circle
+      if (a > 40) {
+        fill(col[0], col[1], col[2], a * opacity);
+        const sizeFactor = 1.4; // slightly larger than shape, but smaller than before
+        // draw same shape as player
+        if (this.shape === 'circle') {
+          ellipse(0, 0, this.width * sizeFactor, this.height * sizeFactor);
+        } else if (this.shape === 'square') {
+          rectMode(CENTER);
+          rect(0, 0, this.width * sizeFactor, this.height * sizeFactor);
+        } else if (this.shape === 'x') {
+          strokeWeight(4);
+          line(-this.width * sizeFactor/2, -this.height * sizeFactor/2, this.width * sizeFactor/2, this.height * sizeFactor/2);
+          line(-this.width * sizeFactor/2, this.height * sizeFactor/2, this.width * sizeFactor/2, -this.height * sizeFactor/2);
+          strokeWeight(2);
+        } else if (this.shape === 'star') {
+          const r = (this.width * sizeFactor) / 2;
+          const r2 = r * 0.5;
+          beginShape();
+          for (let i = 0; i < 5; i++) {
+            let a2 = -Math.PI/2 + i * (2 * Math.PI / 5);
+            vertex(Math.cos(a2) * r, Math.sin(a2) * r);
+            a2 += Math.PI / 5;
+            vertex(Math.cos(a2) * r2, Math.sin(a2) * r2);
+          }
+          endShape(CLOSE);
+        }
+      }
       pop();
     }
 
