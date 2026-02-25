@@ -333,17 +333,19 @@ class Player {
     this.manager = manager;
     this.reset();
   }
+
   reset() {
     this.x = 0;
     this.y = 0;
     this.vy = 0;
-    this.width = 40; this.height = 40;
+    this.width = 40; 
+    this.height = 40;
     this.grounded = false;
     this.gravityDir = 1;
 
     // rotation fields
     this.rotation = 0;
-    this.rotSpeed = 360; // good GD-like speed
+    this.rotSpeed = 12; // GD-like speed
 
     this.shape = 'square';
     this.color = [0,255,200];
@@ -375,7 +377,6 @@ class Player {
 
   attemptJump(tNow) {
     if (!this.alive) return false;
-    if (tNow <= this.inputBufferUntil) {}
 
     const canCoyote = tNow <= this.coyoteUntil;
     if (this.grounded || canCoyote) {
@@ -392,11 +393,11 @@ class Player {
 
     this.applyGravity(dt);
 
-    const steps = Math.max(1, Math.ceil(Math.abs(this.vy*dt) / 10));
+    const steps = Math.max(1, Math.ceil(Math.abs(this.vy * dt) / 10));
     const stepDt = dt / steps;
     const wasGrounded = this.grounded;
 
-    for (let s=0;s<steps;s++) {
+    for (let s = 0; s < steps; s++) {
       const prevY = this.y;
       this.y += this.vy * stepDt;
 
@@ -413,14 +414,14 @@ class Player {
         this.vy = 0;
         this.coyoteUntil = -9999;
       } else {
-        if (wasGrounded) this.coyoteUntil = tNow + (CONFIG.coyoteTimeMs/1000);
+        if (wasGrounded) {
+          this.coyoteUntil = tNow + (CONFIG.coyoteTimeMs / 1000);
+        }
         this.grounded = false;
       }
     }
 
     const bottomBound = globalManager.map ? globalManager.map.worldBottom : height;
-    const topBound = globalManager.map ? globalManager.map.worldTop : 0;
-
     if (this.y > bottomBound + 10) {
       this.alive = false;
       world.onPlayerDeath(this);
@@ -434,8 +435,8 @@ class Player {
       this.inputBufferUntil = -9999;
     }
 
-    // 🔥 Rotate ONLY when in the air, and flip direction with gravity
-    if (!this.grounded) {
+    // 🔥 Rotate ONLY when truly airborne (vy ≠ 0)
+    if (Math.abs(this.vy) > 0.01) {
       this.rotation += this.rotSpeed * dt * this.gravityDir;
     }
   }
@@ -444,7 +445,7 @@ class Player {
     const shrink = 0.02;
     const shw = this.width * shrink;
     const shh = this.height * shrink;
-    const worldX = (this.distance || 0);
+    const worldX = this.distance || 0;
     return {
       x: worldX - this.width/2 + shw,
       y: this.y - this.height/2 + shh,
@@ -453,37 +454,41 @@ class Player {
     };
   }
 
-  render(cx, centerX, centerY, opacity=1) {
+  render(cx, centerX, centerY, opacity = 1) {
     push();
     translate(centerX, this.y);
 
     // apply rotation
     rotate(this.rotation);
 
-    noFill(); stroke(255); strokeWeight(2);
-    fill(this.color[0], this.color[1], this.color[2], 220*opacity);
+    noFill();
+    stroke(255);
+    strokeWeight(2);
+    fill(this.color[0], this.color[1], this.color[2], 220 * opacity);
 
     if (this.shape === 'circle') {
-      ellipse(0,0,this.width,this.height);
+      ellipse(0, 0, this.width, this.height);
     } else if (this.shape === 'square') {
-      rectMode(CENTER); rect(0,0,this.width,this.height);
+      rectMode(CENTER);
+      rect(0, 0, this.width, this.height);
     } else if (this.shape === 'x') {
       strokeWeight(4);
       line(-this.width/2, -this.height/2, this.width/2, this.height/2);
       line(-this.width/2, this.height/2, this.width/2, -this.height/2);
       strokeWeight(2);
     } else if (this.shape === 'star') {
-      const r = this.width/2;
+      const r = this.width / 2;
       const r2 = r * 0.5;
       beginShape();
-      for (let i=0;i<5;i++){
-        let a = -Math.PI/2 + i * (2*Math.PI/5);
-        vertex(Math.cos(a)*r, Math.sin(a)*r);
-        a += Math.PI/5;
-        vertex(Math.cos(a)*r2, Math.sin(a)*r2);
+      for (let i = 0; i < 5; i++) {
+        let a = -Math.PI/2 + i * (2 * Math.PI / 5);
+        vertex(Math.cos(a) * r, Math.sin(a) * r);
+        a += Math.PI / 5;
+        vertex(Math.cos(a) * r2, Math.sin(a) * r2);
       }
       endShape(CLOSE);
     }
+
     pop();
   }
 }
