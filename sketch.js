@@ -338,9 +338,9 @@ class Player {
     this.grounded = false;
     this.gravityDir = 1;
 
-    // 🔥 Geometry Dash rotation fields
+    // rotation fields
     this.rotation = 0;
-    this.rotSpeed = 50; // constant GD spin speed
+    this.rotSpeed = 12; // good GD-like speed
 
     this.shape = 'square';
     this.color = [0,255,200];
@@ -431,14 +431,9 @@ class Player {
       this.inputBufferUntil = -9999;
     }
 
-    // 🔥🔥 Geometry Dash rotation behavior
+    // 🔥 Rotate ONLY when in the air
     if (!this.grounded) {
-      // constant spin in air, direction flips with gravity
       this.rotation += this.rotSpeed * dt * this.gravityDir;
-    } else {
-      // snap to nearest 90° when grounded
-      const snap = Math.PI / 2;
-      this.rotation = Math.round(this.rotation / snap) * snap;
     }
   }
 
@@ -459,7 +454,7 @@ class Player {
     push();
     translate(centerX, this.y);
 
-    // 🔥 apply rotation
+    // apply rotation
     rotate(this.rotation);
 
     noFill(); stroke(255); strokeWeight(2);
@@ -489,6 +484,7 @@ class Player {
     pop();
   }
 }
+
 
 
 /* ======= Map Generator and World ======= */
