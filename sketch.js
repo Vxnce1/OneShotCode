@@ -107,6 +107,14 @@ class GameManager {
     this.coins = (this.coins||0) + n;
     this.totalCoins = (this.totalCoins||0) + n;
     try { this.save('totalCoins', this.totalCoins); } catch(e){}
+    // xp gain for every 20 coins collected
+    this.coinXpAcc = (this.coinXpAcc||0) + n;
+    if (this.coinXpAcc >= 20) {
+      const xpGain = Math.floor(this.coinXpAcc / 20);
+      this.coinXpAcc -= xpGain * 20;
+      try { this.save('coinXpAcc', this.coinXpAcc); } catch(e){}
+      this.addXp(xpGain);
+    }
     // update per-run best (highscore) as coins collected in a single run
     try {
       const key = 'highscore';
@@ -121,6 +129,24 @@ class GameManager {
     this.totalCoins -= price; try { this.save('totalCoins', this.totalCoins); } catch(e){}
     this.purchasedShapes.push(name); this.save('purchasedShapes', this.purchasedShapes);
     return true;
+  }
+
+  // helpers for xp/levels
+  xpToNextLevel() {
+    // threshold grows linearly with level; slower gain at higher levels
+    return 20 * this.level;
+  }
+
+  addXp(n) {
+    this.xp = (this.xp||0) + n;
+    // check for one or more level ups
+    while (this.xp >= this.xpToNextLevel()) {
+      this.xp -= this.xpToNextLevel();
+      this.level++;
+      this.levelUpTimer = 2.0; // two seconds of indicator
+    }
+    try { this.save('xp', this.xp); } catch(e){}
+    try { this.save('level', this.level); } catch(e){}
   }
 
   buyAura(price) {
@@ -966,8 +992,35 @@ function renderUI(manager) {
     const hs = manager.load(hsKey, 0);
     text('Best: ' + hs, scoreX, scoreY+18);
     text('Time: ' + (millis()/1000).toFixed(1), scoreX, scoreY+36);
+    // level / xp bar
+    text('Level: ' + manager.level, scoreX, scoreY+54);
+    const xpNext = manager.xpToNextLevel();
+    const barX = scoreX;
+    const barY = scoreY + 74;
+    const barW = 100;
+    const barH = 10;
+    stroke(255);
+    noFill();
+    rect(barX, barY, barW, barH);
+    fill(0,200,120);
+    const pct = xpNext ? constrain(manager.xp / xpNext, 0, 1) : 0;
+    rect(barX, barY, barW * pct, barH);
+    textSize(12);
+    textAlign(LEFT, TOP);
+    text(manager.xp + '/' + xpNext, barX, barY + barH + 2);
   }
   pop();
+
+  // level-up indicator text (fades over timer)
+  if (manager.levelUpTimer > 0) {
+    const alpha = 255 * (manager.levelUpTimer / 2.0);
+    // simple scale pulse as timer decreases
+    const scaleAmt = 1 + 0.5 * Math.sin((1 - manager.levelUpTimer/2.0) * Math.PI);
+    push(); textSize(32 * scaleAmt); textAlign(CENTER, CENTER);
+    fill(255,235,0, alpha);
+    text('Level increase!', width/2, height/2);
+    pop();
+  }
 }
 
 /* ======= Input Handling ======= */
@@ -1134,6 +1187,7 @@ function draw() {
     if (window.volumeSlider) volumeSlider.hide();
     // advance run time
     globalManager.runTime += dt;
+    if (globalManager.levelUpTimer > 0) globalManager.levelUpTimer = Math.max(0, globalManager.levelUpTimer - dt);
     // beat visuals disabled (audio removed)
     // const beatInterval = 60 / CONFIG.bpm;
     // globalManager.beatPhase = (globalManager.runTime % beatInterval) / beatInterval;
