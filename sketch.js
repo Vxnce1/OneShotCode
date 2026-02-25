@@ -1217,7 +1217,7 @@ function draw() {
 
 function drawMenu() {
   push(); textAlign(CENTER, CENTER); fill(255);
-  textSize(48); text('Flux Runner', width/2, height*0.25);
+  textSize(48); text('λ-Dash', width/2, height*0.25);
   textSize(18); text('Press Enter to Start', width/2, height*0.35);
   textSize(14); text('W / Space to jump. P to pause. C to customize, H for shop, T for tutorial', width/2, height*0.42);
   textSize(12); text('Press D to run deterministic seed-safety test (dev)', width/2, height*0.48);
