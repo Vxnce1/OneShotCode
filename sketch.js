@@ -343,7 +343,7 @@ class Player {
 
     // rotation fields
     this.rotation = 0;
-    this.rotSpeed = 12; // good GD-like speed
+    this.rotSpeed = 360; // good GD-like speed
 
     this.shape = 'square';
     this.color = [0,255,200];
