@@ -331,71 +331,79 @@ class Player {
     this.reset();
   }
   reset() {
-    this.x = 0; // world-relative x, but player rendered at center
+    this.x = 0;
     this.y = 0;
     this.vy = 0;
     this.width = 40; this.height = 40;
     this.grounded = false;
-    this.gravityDir = 1; // 1 down, -1 up
-    this.rotation = 0; // in radians or degrees 
-    this.rotSpeed = 8; // tweak this for faster/slower spin
-    // rotation no longer used
+    this.gravityDir = 1;
+
+    // 🔥 Geometry Dash rotation fields
+    this.rotation = 0;
+    this.rotSpeed = 12; // constant GD spin speed
+
     this.shape = 'square';
     this.color = [0,255,200];
     this.lastJumpTime = -9999;
-    this.inputBufferUntil = -9999; // seconds
-    this.coyoteUntil = -9999; // seconds
+    this.inputBufferUntil = -9999;
+    this.coyoteUntil = -9999;
     this.score = 0;
     this.alive = true;
     this.distance = 0;
-    // portals removed; queue field no longer used
-    // this.queuedPortal = null; // portal queued to apply at start of next physics step
     this.trailTimer = 0;
   }
-  resetForRun() { this.reset(); this.y = height - 120; if (this.manager) { this.shape = this.manager.selectedShape || this.shape; this.color = this.manager.selectedColor || this.color; this.distance = 0; this.alive = true; } }
+
+  resetForRun() {
+    this.reset();
+    this.y = height - 120;
+    if (this.manager) {
+      this.shape = this.manager.selectedShape || this.shape;
+      this.color = this.manager.selectedColor || this.color;
+      this.distance = 0;
+      this.alive = true;
+    }
+  }
+
   applyGravity(dt) {
     const g = CONFIG.gravity * this.gravityDir;
     this.vy += g * dt;
     this.vy = clamp(this.vy, -CONFIG.terminalVelocity, CONFIG.terminalVelocity);
   }
+
   attemptJump(tNow) {
     if (!this.alive) return false;
-    if (tNow <= this.inputBufferUntil) {
-      // buffered in time window
-    }
+    if (tNow <= this.inputBufferUntil) {}
+
     const canCoyote = tNow <= this.coyoteUntil;
     if (this.grounded || canCoyote) {
-      this.vy = CONFIG.initialJumpVelocity * this.gravityDir; // sign with gravity
+      this.vy = CONFIG.initialJumpVelocity * this.gravityDir;
       this.grounded = false;
       this.lastJumpTime = tNow;
-      this.rotation *= 0.8;
-      // no rotation on jump
-      // emit jump particles
-      // if (this.manager && this.manager.particles) this.manager.particles.emit(this.distance, this.y, 8, this.color);
       return true;
     }
     return false;
   }
+
   update(dt, tNow, world) {
     if (!this.alive) return;
-    // portals have been removed; no queued effects
-    // physics order: apply gravity, update pos, collision detection, trigger death before correction
+
     this.applyGravity(dt);
-    // vertical sweep to avoid tunneling
+
     const steps = Math.max(1, Math.ceil(Math.abs(this.vy*dt) / 10));
     const stepDt = dt / steps;
     const wasGrounded = this.grounded;
+
     for (let s=0;s<steps;s++) {
       const prevY = this.y;
       this.y += this.vy * stepDt;
-      // collision check with obstacles and spikes
+
       const lethal = world.checkLethalCollision(this.getAABB());
       if (lethal) {
         this.alive = false;
         world.onPlayerDeath(this);
         return;
       }
-      // resolve platforms landing only if no lethal
+
       const landed = world.resolvePlatformCollision(this, tNow, prevY);
       if (landed) {
         this.grounded = true;
@@ -406,67 +414,67 @@ class Player {
         this.grounded = false;
       }
     }
-    // check if fallen off map
+
     const bottomBound = globalManager.map ? globalManager.map.worldBottom : height;
     const topBound = globalManager.map ? globalManager.map.worldTop : 0;
-    // fall off bottom only
+
     if (this.y > bottomBound + 10) {
       this.alive = false;
       world.onPlayerDeath(this);
       return;
     }
-    // remove stuck‑air death hack; not needed with proper cross‑check
-    // update distance
+
     this.distance += world.speed * dt;
-    // if we landed and have an input buffered, trigger jump
+
     if (this.grounded && (tNow <= this.inputBufferUntil)) {
       this.attemptJump(tNow);
       this.inputBufferUntil = -9999;
     }
-    // rotation update
+
+    // 🔥🔥 Geometry Dash rotation behavior
     if (!this.grounded) {
-      // spin while airborne
-      // rotation disabled
+      // constant spin in air, direction flips with gravity
+      this.rotation += this.rotSpeed * dt * this.gravityDir;
+    } else {
+      // snap to nearest 90° when grounded
+      const snap = Math.PI / 2;
+      this.rotation = Math.round(this.rotation / snap) * snap;
     }
-    // smooth rotation when grounded
-    if (this.grounded) {
-      // no rotation smoothing needed
-    }
-    // trail particles
-    // this.trailTimer = (this.trailTimer || 0) + dt;
-    // if (this.trailTimer > 0.06) {
-    //   this.trailTimer = 0;
-    //   if (this.manager && this.manager.particles) this.manager.particles.emit(this.distance - 6, this.y, 1, this.color);
-    // }
   }
+
   getAABB() {
-    // small constant shrink to avoid pixel-perfect clipping
     const shrink = 0.02;
     const shw = this.width * shrink;
     const shh = this.height * shrink;
     const worldX = (this.distance || 0);
-    return { x: worldX - this.width/2 + shw, y: this.y - this.height/2 + shh,
-             w: this.width - shw*2, h: this.height - shh*2 };
+    return {
+      x: worldX - this.width/2 + shw,
+      y: this.y - this.height/2 + shh,
+      w: this.width - shw*2,
+      h: this.height - shh*2
+    };
   }
+
   render(cx, centerX, centerY, opacity=1) {
-    push(); translate(centerX, this.y);
+    push();
+    translate(centerX, this.y);
+
+    // 🔥 apply rotation
     rotate(this.rotation);
-    // visual glow disabled
-    // no rotation
+
     noFill(); stroke(255); strokeWeight(2);
     fill(this.color[0], this.color[1], this.color[2], 220*opacity);
+
     if (this.shape === 'circle') {
       ellipse(0,0,this.width,this.height);
     } else if (this.shape === 'square') {
       rectMode(CENTER); rect(0,0,this.width,this.height);
     } else if (this.shape === 'x') {
-      // draw literal letter X using two lines
       strokeWeight(4);
       line(-this.width/2, -this.height/2, this.width/2, this.height/2);
       line(-this.width/2, this.height/2, this.width/2, -this.height/2);
       strokeWeight(2);
     } else if (this.shape === 'star') {
-      // draw a simple five-point star inside the bounding box
       const r = this.width/2;
       const r2 = r * 0.5;
       beginShape();
@@ -481,6 +489,7 @@ class Player {
     pop();
   }
 }
+
 
 /* ======= Map Generator and World ======= */
 class MapGenerator {
