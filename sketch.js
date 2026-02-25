@@ -1311,12 +1311,7 @@ function draw() {
       globalManager.players[0].render(null, width/2, globalManager.players[0].y);
       renderUI(globalManager);
       pop();
-      for (let i=0;i<globalManager.players.length;i++) {
-        const p = globalManager.players[i];
-        const centerX = width/2; const centerY = height/2;
-        p.render(null, centerX, p.y);
-      }
-      renderUI(globalManager);
+      // multiplayer rendering removed; only player 0 is drawn above
   } else if (globalManager.state === STATES.PAUSED) {
     fill(255); textSize(32); textAlign(CENTER, CENTER); text('PAUSED', width/2, height/2 - 60);
     if (!window.resumeButton) {
