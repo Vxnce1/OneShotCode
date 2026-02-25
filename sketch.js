@@ -525,6 +525,11 @@ class Player {
     } else if (this.shape === 'square') {
       rectMode(CENTER);
       rect(0, 0, this.width, this.height);
+    } else if (this.shape === 'triangle') {
+      // upward-pointing triangle
+      const w = this.width / 2;
+      const h = this.height / 2;
+      triangle(-w, h, w, h, 0, -h);
     } else if (this.shape === 'x') {
       strokeWeight(4);
       line(-this.width/2, -this.height/2, this.width/2, this.height/2);
@@ -1314,6 +1319,7 @@ function drawShop(manager) {
   const items = [
     {name:'circle',price:0},
     {name:'square',price:0},
+    {name:'triangle',price:70},
     {name:'x',price:0},
     {name:'star',price:100},
     {name:'aura',price:70}
@@ -1457,7 +1463,7 @@ function drawCustomize(manager) {
     endShape(CLOSE);
   }
   // shapes bottom
-  const shapes = ['circle','square','x','star']; const sy = height - 140; const sw = 80;
+  const shapes = ['circle','square','triangle','x','star']; const sy = height - 140; const sw = 80;
   for (let i=0;i<shapes.length;i++){ const nm = shapes[i]; const sx = width/2 - (shapes.length*(sw+16))/2 + i*(sw+16);
     fill(20); stroke(255);
     // highlight selected shape
@@ -1585,11 +1591,15 @@ function mousePressed() {
       }
     }
     // shapes bottom
-    const shapes = ['circle','square','x','star']; const sy = height - 140; const sw = 80;
+    const shapes = ['circle','square','triangle','x','star']; const sy = height - 140; const sw = 80;
     for (let i=0;i<shapes.length;i++){ const sx = width/2 - (shapes.length*(sw+16))/2 + i*(sw+16);
       if (mX >= sx && mX <= sx+sw && mY >= sy && mY <= sy+sw) {
         const nm = shapes[i]; if (globalManager.purchasedShapes.indexOf(nm) === -1) {
-          globalManager.pendingPurchase = { name: nm, price: nm==='x'?50:(nm==='star'?100:0) };
+          let pr = 0;
+          if (nm === 'x') pr = 50;
+          else if (nm === 'star') pr = 100;
+          else if (nm === 'triangle') pr = 70;
+          globalManager.pendingPurchase = { name: nm, price: pr };
         } else { globalManager.equipShape(nm); }
         return;
       }
