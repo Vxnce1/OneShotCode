@@ -724,6 +724,7 @@ class MapGenerator {
   // ball won't die simply because its box grazes a spike or pillar.
   checkLethalCollision(aabb) {
     // simple rectangle intersection for spikes and pillars
+    // jump pads and rings are intentionally non‑lethal and thus skipped.
     for (const s of this.segments) {
       // spikes
       if (s.spikes) for (const sp of s.spikes) {
@@ -784,24 +785,17 @@ class MapGenerator {
         } else if (ob.type === 'jumppad') {
           const jb = { x: ob.x - ob.w/2, y: ob.y - ob.h/2, w: ob.w, h: ob.h };
           if (rectsIntersect(a, jb)) {
-            // apply auto-trigger once when overlapping and grounded
+            // only act when the player is grounded; otherwise just pass through
             if (player.grounded) {
               player.vy = CONFIG.initialJumpVelocity * ob.strength * player.gravityDir; // scaled jump
               player.grounded = false;
+              // optional jump particles
               // if (this.particlePool) {
-              //   // find manager particles via player.manager
               //   if (player.manager && player.manager.particles) player.manager.particles.emit(player.distance, player.y, 12, [255,200,80]);
               // }
-              return false; // don't treat as platform
+              return false; // don't treat pad as a platform after bouncing
             }
-            // check side clipping
-            const obLeft = ob.x - ob.w/2;
-            const obRight = ob.x + ob.w/2;
-            const playerCenterX = a.x + a.w/2;
-            if (playerCenterX < obLeft || playerCenterX > obRight) {
-              onPlayerDeath(player);
-              return false;
-            }
+            // NOTE: removed side‑clipping fatality for jump pads – they should never kill the player.
           }
         } else if (ob.type === 'ring') {
           const rb = { x: ob.x - ob.w/2, y: ob.y - ob.h/2, w: ob.w, h: ob.h };
