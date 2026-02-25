@@ -88,6 +88,8 @@ class GameManager {
     this.selectedShape = this.load('selectedShape', 'square');
     this.selectedColor = this.load('selectedColor', [0,255,200]);
     this.pendingPurchase = null;
+    this.equipFlashUntil = 0;
+    this.equipFlashShape = null;
     this.setupAudio();
     this.clearTransient();
     this.particles = new ParticleSystem(this.rng);
@@ -101,6 +103,12 @@ class GameManager {
     this.coins = (this.coins||0) + n;
     this.totalCoins = (this.totalCoins||0) + n;
     try { this.save('totalCoins', this.totalCoins); } catch(e){}
+    // update per-run best (highscore) as coins collected in a single run
+    try {
+      const key = 'highscore';
+      const cur = this.load(key, 0);
+      if (this.coins > cur) this.save(key, this.coins);
+    } catch(e) {}
   }
 
   buyShape(name, price) {
@@ -112,7 +120,9 @@ class GameManager {
   }
   equipShape(name) {
     if (this.purchasedShapes.indexOf(name) === -1) return false;
-    this.selectedShape = name; this.save('selectedShape', name); return true;
+    this.selectedShape = name; this.save('selectedShape', name);
+    try { this.equipFlashUntil = Date.now() + 1200; this.equipFlashShape = name; } catch(e){}
+    return true;
   }
   pickColor(col) { this.selectedColor = col; this.save('selectedColor', col); }
   clearTransient() {
@@ -457,10 +467,10 @@ class Player {
       const r2 = r * 0.5;
       beginShape();
       for (let i=0;i<5;i++){
-        let a = -HALF_PI + i * TWO_PI/5;
-        vertex(cos(a)*r, sin(a)*r);
-        a += PI/5;
-        vertex(cos(a)*r2, sin(a)*r2);
+        let a = -Math.PI/2 + i * (2*Math.PI/5);
+        vertex(Math.cos(a)*r, Math.sin(a)*r);
+        a += Math.PI/5;
+        vertex(Math.cos(a)*r2, Math.sin(a)*r2);
       }
       endShape(CLOSE);
     }
@@ -535,6 +545,13 @@ class MapGenerator {
     if (this.rng.next() < 0.18) {
       const rx = Math.round(this.rng.range(seg.x + seg.w*0.15, seg.x + seg.w*0.85));
       seg.obstacles.push(this.createRing(rx, seg.platformY - 40, this.rng.range(1.0,1.6)));
+    }
+    // occasional jump pad
+    if (this.rng.next() < 0.12) {
+      const jx = Math.round(this.rng.range(seg.x + seg.w*0.2, seg.x + seg.w*0.8));
+      // place pad so its top sits on the platform
+      const pad = this.createJumpPad(jx, seg.platformY - 6, this.rng.range(1.0,1.6));
+      seg.obstacles.push(pad);
     }
     // coins
     if (this.rng.next() < 0.6) {
@@ -1080,14 +1097,19 @@ function draw() {
     //     globalManager.changeState(STATES.GAMEOVER);
     //   }
     // }
-    // world wrapper
-    const world = { checkLethalCollision: (a)=>globalManager.map.checkLethalCollision(a), resolvePlatformCollision: (p,prevY)=>globalManager.map.resolvePlatformCollision(p, runTime, prevY), speed: globalManager.map.speed, onPlayerDeath: (p)=>onPlayerDeath(p)};
-    // update players
+    // world wrapper (provides proper onPlayerDeath callback)
     const tNow = globalManager.runTime;
+    const world = {
+      checkLethalCollision: (a) => globalManager.map.checkLethalCollision(a),
+      resolvePlatformCollision: (p, prevY) => globalManager.map.resolvePlatformCollision(p, tNow, prevY),
+      speed: globalManager.map.speed,
+      onPlayerDeath: (p) => onPlayerDeath(p)
+    };
+    // update players (pass wrapper so deaths route to game manager)
     for (let i=0;i<globalManager.players.length;i++) {
       const p = globalManager.players[i];
       if (!p.alive) continue;
-      p.update(dt, tNow, globalManager.map); // map provided only for speed currently
+      p.update(dt, tNow, world);
     }
     // tutorial completion check
     if (globalManager.state === STATES.TUTORIAL) {
@@ -1111,8 +1133,17 @@ function draw() {
           if (ob.type === 'pillar') {
             rectMode(CENTER); rect(ob.x - camX + width/2, ob.y - ob.h/2, ob.w, ob.h);
           } else if (ob.type === 'jumppad') {
-            rectMode(CENTER); fill(255,140,0); stroke(255); rect(ob.x - camX + width/2, ob.y - ob.h/2, ob.w, ob.h);
-            noFill();
+            // clearer visual: draw pad with upward arrow
+            const px = ob.x - camX + width/2;
+            const py = ob.y - ob.h/2;
+            push(); rectMode(CENTER); noStroke();
+            // pad base
+            fill(255,140,0); rect(px, py, ob.w, ob.h, 6);
+            // highlight stripe
+            fill(255,200,80,200); rect(px, py, ob.h/2 - 2, ob.w * 0.6, ob.h/3, 4);
+            // upward arrow indicator
+            fill(255); noStroke(); const ah = ob.h*1.6; triangle(px, py - ah, px - ah/2, py, px + ah/2, py);
+            pop();
           }
         }
         if (s.spikes) for (const sp of s.spikes) {
@@ -1298,20 +1329,33 @@ function drawCustomize(manager) {
     const r2 = r * 0.5;
     beginShape();
     for (let i=0;i<5;i++){
-      let a = -HALF_PI + i * TWO_PI/5;
-      vertex(cos(a)*r, sin(a)*r);
-      a += PI/5;
-      vertex(cos(a)*r2, sin(a)*r2);
+      let a = -Math.PI/2 + i * (2*Math.PI/5);
+      vertex(px + Math.cos(a)*r - px, py + Math.sin(a)*r - py);
+      a += Math.PI/5;
+      vertex(px + Math.cos(a)*r2 - px, py + Math.sin(a)*r2 - py);
     }
     endShape(CLOSE);
   }
   // shapes bottom
   const shapes = ['circle','square','x','star']; const sy = height - 140; const sw = 80;
   for (let i=0;i<shapes.length;i++){ const nm = shapes[i]; const sx = width/2 - (shapes.length*(sw+16))/2 + i*(sw+16);
-    fill(20); stroke(255); rect(sx, sy, sw, sw,8);
-    fill(255); textAlign(CENTER, CENTER); text(nm, sx+sw/2, sy+14);
-    if (manager.purchasedShapes.indexOf(nm) === -1) { fill(255,180,0); text('Buy', sx+sw/2, sy+sw-18); }
-    else { fill(0,200,120); text('Equip', sx+sw/2, sy+sw-18); }
+    fill(20); stroke(255);
+    // highlight selected shape
+    if (manager.selectedShape === nm) { stroke(255,235,0); strokeWeight(3); rect(sx, sy, sw, sw,8); strokeWeight(2); stroke(255); }
+    else rect(sx, sy, sw, sw,8);
+    fill(255); textAlign(CENTER, CENTER);
+    text(nm, sx+sw/2, sy+sw/2 - 10);
+    if (manager.purchasedShapes.indexOf(nm) === -1) { fill(255,180,0); text('Buy', sx+sw/2, sy+sw/2 + 24); }
+    else { fill(0,200,120); text('Equip', sx+sw/2, sy+sw/2 + 24); }
+  }
+  // equip flash indicator (brief toast)
+  if (manager.equipFlashUntil && Date.now() < manager.equipFlashUntil) {
+    const alpha = Math.floor(200 * (1 - (manager.equipFlashUntil - Date.now()) / 1200));
+    push(); rectMode(CENTER); fill(0,180,80, alpha); stroke(255); strokeWeight(1);
+    const bx = px + ps/2 + 60, by = py - ps/2;
+    rect(bx, by, 140, 40, 8);
+    noStroke(); fill(255,255,255,alpha); textAlign(CENTER, CENTER); textSize(14); text('Equipped: ' + (manager.equipFlashShape||''), bx, by);
+    pop();
   }
   pop();
 }

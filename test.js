@@ -182,4 +182,4 @@ class MapGenerator {
 
 // Run the test
 const bad = MapGenerator.testSeeds(1, 200, 'medium');
-console.log('bad seeds', bad.length, bad.slice(0,8));
+console.log('bad seeds', bad.length, bad.slice(0,8));''''
