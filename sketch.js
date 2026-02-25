@@ -340,7 +340,7 @@ class Player {
 
     // 🔥 Geometry Dash rotation fields
     this.rotation = 0;
-    this.rotSpeed = 12; // constant GD spin speed
+    this.rotSpeed = 50; // constant GD spin speed
 
     this.shape = 'square';
     this.color = [0,255,200];
