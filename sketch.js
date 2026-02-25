@@ -421,6 +421,7 @@ class Player {
         this.grounded = true;
         this.vy = 0;
         this.coyoteUntil = -9999;
+        this.rotSpeed = 0;
       } else {
         if (wasGrounded) {
           this.coyoteUntil = tNow + (CONFIG.coyoteTimeMs / 1000);
