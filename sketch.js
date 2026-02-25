@@ -473,14 +473,6 @@ class Player {
     }
     // visual glow disabled
     // no rotation
-=======
-    push();
-    translate(centerX, this.y);
-
-    // 🔥 apply rotation
-    rotate(this.rotation);
-
->>>>>>> 749a150deed02420275ae5f83859ca22279bca1f
     noFill(); stroke(255); strokeWeight(2);
     fill(this.color[0], this.color[1], this.color[2], 220*opacity);
 
