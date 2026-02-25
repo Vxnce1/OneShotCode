@@ -120,6 +120,14 @@ class GameManager {
     this.purchasedShapes.push(name); this.save('purchasedShapes', this.purchasedShapes);
     return true;
   }
+
+  buyAura(price) {
+    if (this.purchasedAura) return false;
+    if (this.totalCoins < price) return false;
+    this.totalCoins -= price; try { this.save('totalCoins', this.totalCoins); } catch(e){}
+    this.purchasedAura = true; this.save('purchasedAura', true);
+    return true;
+  }
   equipShape(name) {
     if (this.purchasedShapes.indexOf(name) === -1) return false;
     this.selectedShape = name; this.save('selectedShape', name);
