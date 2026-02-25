@@ -1101,7 +1101,7 @@ function draw() {
     const tNow = globalManager.runTime;
     const world = {
       checkLethalCollision: (a) => globalManager.map.checkLethalCollision(a),
-      resolvePlatformCollision: (p, prevY) => globalManager.map.resolvePlatformCollision(p, tNow, prevY),
+      resolvePlatformCollision: (p, runTimeArg, prevY) => globalManager.map.resolvePlatformCollision(p, runTimeArg, prevY),
       speed: globalManager.map.speed,
       onPlayerDeath: (p) => onPlayerDeath(p)
     };
