@@ -90,6 +90,7 @@ class GameManager {
     // aura style purchase (grants a glowing outline in the selected color)
     this.purchasedAura = this.load('purchasedAura', false);
     this.auraColor = this.load('auraColor', this.selectedColor.slice());
+    this.auraEnabled = this.load('auraEnabled', true);
     this.pendingPurchase = null;
     this.equipFlashUntil = 0;
     this.equipFlashShape = null;
@@ -127,10 +128,12 @@ class GameManager {
     if (this.totalCoins < price) return false;
     this.totalCoins -= price; try { this.save('totalCoins', this.totalCoins); } catch(e){}
     this.purchasedAura = true;
+    this.auraEnabled = true;
     // if auraColor hasn't been set yet, give it current shape color
     if (!this.auraColor) this.auraColor = (this.selectedColor||[255,255,255]).slice();
     this.save('purchasedAura', true);
     this.save('auraColor', this.auraColor);
+    this.save('auraEnabled', this.auraEnabled);
     return true;
   }
   equipShape(name) {
@@ -141,6 +144,7 @@ class GameManager {
   }
   pickColor(col) { this.selectedColor = col; this.save('selectedColor', col); }
   pickAuraColor(col) { this.auraColor = col; this.save('auraColor', col); }
+  toggleAura() { this.auraEnabled = !this.auraEnabled; this.save('auraEnabled', this.auraEnabled); }
   clearTransient() {
     this.inputBuffer = {};
     this.groundedFlags = [false, false];
@@ -232,6 +236,7 @@ class GameManager {
       this.save('selectedColor', this.selectedColor);
       this.save('purchasedAura', this.purchasedAura);
       this.save('auraColor', this.auraColor);
+      this.save('auraEnabled', this.auraEnabled);
       this.save('volume', this.volume);
       this.save('difficulty', this.difficulty);
     } catch(e) { /* ignore storage errors */ }
@@ -470,13 +475,17 @@ class Player {
     push();
     translate(centerX, this.y);
 
-    // aura glow (if purchased)
-    if (this.manager && this.manager.purchasedAura) {
+    // aura glow (if purchased and enabled)
+    if (this.manager && this.manager.purchasedAura && this.manager.auraEnabled) {
       push();
       blendMode(ADD);
       noStroke();
       const col = this.manager.auraColor || this.manager.selectedColor || this.color;
-      fill(col[0], col[1], col[2], 120 * opacity);
+      // pulsate alpha between ~60 and ~180 over time
+      const t = (this.manager.runTime || 0) * 2.0;
+      const glow = 0.5 + 0.5 * Math.sin(t);
+      const a = 60 + 120 * glow;
+      fill(col[0], col[1], col[2], a * opacity);
       ellipse(0, 0, this.width * 1.8, this.height * 1.8);
       pop();
     }
@@ -1380,6 +1389,10 @@ function drawCustomize(manager) {
       const col = palette[i]; fill(col[0],col[1],col[2]); stroke(255); rect(startX + i*(s+12), auraStartY, s, s,6);
       if (manager.auraColor && manager.auraColor[0]===col[0] && manager.auraColor[1]===col[1]) { noFill(); stroke(255,235,0); rect(startX + i*(s+12), auraStartY, s, s,6); }
     }
+    // aura toggle display
+    textSize(14); textAlign(LEFT, TOP);
+    const toggleY = auraStartY + s + 10;
+    text('Aura: ' + (manager.auraEnabled ? 'ON' : 'OFF') + ' (click here to toggle)', startX, toggleY);
   }
   // live preview center
   const px = width/2, py = height/2 - 20, ps = 120;
@@ -1534,6 +1547,15 @@ function mousePressed() {
       for (let i=0;i<palette.length;i++){
         const x = startX + i*(s+12);
         if (mX >= x && mX <= x+s && mY >= auraY && mY <= auraY+s) { globalManager.pickAuraColor(palette[i]); return; }
+      }
+      // toggle click region
+      const toggleY = auraY + s + 10;
+      // approximate width based on text length
+      const toggleWidth = 200;
+      const toggleHeight = 20;
+      if (mX >= startX && mX <= startX + toggleWidth && mY >= toggleY && mY <= toggleY + toggleHeight) {
+        globalManager.toggleAura();
+        return;
       }
     }
     // shapes bottom
