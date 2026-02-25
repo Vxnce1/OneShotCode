@@ -89,6 +89,7 @@ class GameManager {
     this.selectedColor = this.load('selectedColor', [0,255,200]);
     // aura style purchase (grants a glowing outline in the selected color)
     this.purchasedAura = this.load('purchasedAura', false);
+    this.auraColor = this.load('auraColor', this.selectedColor.slice());
     this.pendingPurchase = null;
     this.equipFlashUntil = 0;
     this.equipFlashShape = null;
@@ -125,7 +126,11 @@ class GameManager {
     if (this.purchasedAura) return false;
     if (this.totalCoins < price) return false;
     this.totalCoins -= price; try { this.save('totalCoins', this.totalCoins); } catch(e){}
-    this.purchasedAura = true; this.save('purchasedAura', true);
+    this.purchasedAura = true;
+    // if auraColor hasn't been set yet, give it current shape color
+    if (!this.auraColor) this.auraColor = (this.selectedColor||[255,255,255]).slice();
+    this.save('purchasedAura', true);
+    this.save('auraColor', this.auraColor);
     return true;
   }
   equipShape(name) {
@@ -135,6 +140,7 @@ class GameManager {
     return true;
   }
   pickColor(col) { this.selectedColor = col; this.save('selectedColor', col); }
+  pickAuraColor(col) { this.auraColor = col; this.save('auraColor', col); }
   clearTransient() {
     this.inputBuffer = {};
     this.groundedFlags = [false, false];
@@ -225,6 +231,7 @@ class GameManager {
       this.save('selectedShape', this.selectedShape);
       this.save('selectedColor', this.selectedColor);
       this.save('purchasedAura', this.purchasedAura);
+      this.save('auraColor', this.auraColor);
       this.save('volume', this.volume);
       this.save('difficulty', this.difficulty);
     } catch(e) { /* ignore storage errors */ }
@@ -442,10 +449,7 @@ class Player {
       this.inputBufferUntil = -9999;
     }
 
-    // 🔥 Rotate ONLY when in the air, and flip direction with gravity
-    if (!this.grounded) {
-      this.rotation += this.rotSpeed * dt * this.gravityDir;
-    }
+    // rotation is unused; keep sprite upright
   }
 
   getAABB() {
@@ -465,9 +469,18 @@ class Player {
     push();
     translate(centerX, this.y);
 
-    // apply rotation
-    rotate(this.rotation);
+    // aura glow (if purchased)
+    if (this.manager && this.manager.purchasedAura) {
+      push();
+      blendMode(ADD);
+      noStroke();
+      const col = this.manager.auraColor || this.manager.selectedColor || this.color;
+      fill(col[0], col[1], col[2], 120 * opacity);
+      ellipse(0, 0, this.width * 1.8, this.height * 1.8);
+      pop();
+    }
 
+    // rotation disabled; draw upright
     noFill(); stroke(255); strokeWeight(2);
     fill(this.color[0], this.color[1], this.color[2], 220*opacity);
 
@@ -1271,6 +1284,11 @@ function drawShop(manager) {
   for (let i=0;i<items.length;i++){
     const it = items[i]; const x = startX + i*(w+gap);
     rectMode(CORNER); stroke(255); fill(10); rect(x,y,w,h,8);
+    // draw aura color indicator if owned
+    if (it.name === 'aura' && manager.purchasedAura && manager.auraColor) {
+      noStroke(); fill(manager.auraColor[0], manager.auraColor[1], manager.auraColor[2], 180);
+      ellipse(x + 20, y + h - 20, 24);
+    }
     fill(255); noStroke(); textSize(14); textAlign(CENTER,CENTER);
     // display name differently for aura
     if (it.name === 'aura') text('Aura', x+w/2, y+18);
@@ -1305,8 +1323,14 @@ function drawShop(manager) {
   // confirmation overlay
   if (manager.pendingPurchase) {
     push(); fill(0,0,0,180); rectMode(CORNER); rect(0,0,width,height);
-    fill(255); textAlign(CENTER, CENTER); textSize(18); text('Buy '+manager.pendingPurchase.name+' for '+manager.pendingPurchase.price+' coins?', width/2, height/2-20);
-    text('Click to confirm', width/2, height/2+18);
+    fill(255); textAlign(CENTER, CENTER); textSize(18);
+    if (manager.pendingPurchase.name === 'aura') {
+      text('Buy aura for '+manager.pendingPurchase.price+' coins?', width/2, height/2-20);
+      textSize(12); text('You can select the aura color in Customize after purchase', width/2, height/2+4);
+    } else {
+      text('Buy '+manager.pendingPurchase.name+' for '+manager.pendingPurchase.price+' coins?', width/2, height/2-20);
+    }
+    textSize(14); text('Click to confirm', width/2, height/2+18);
     pop();
   }
 }
@@ -1337,12 +1361,22 @@ function drawCustomize(manager) {
   textSize(14); textAlign(RIGHT, TOP); text('Coins: ' + manager.totalCoins, width-16, 20);
   if (manager.purchasedAura) { textSize(12); textAlign(RIGHT, TOP); text('Aura style active', width-16, 36); }
   textSize(14); textAlign(LEFT, TOP); text('Press M to return', 40, height-40);
-  // palette (no black, no white)
+  // palette (no black, no white) for shape
   const palette = [[255,50,180],[0,200,255],[120,255,80],[255,160,0],[180,90,255]];
   const startX = 40; const startY = 80; const s = 40;
   for (let i=0;i<palette.length;i++){
     const col = palette[i]; fill(col[0],col[1],col[2]); stroke(255); rect(startX + i*(s+12), startY, s, s,6);
     if (manager.selectedColor && manager.selectedColor[0]===col[0] && manager.selectedColor[1]===col[1]) { noFill(); stroke(255,235,0); rect(startX + i*(s+12), startY, s, s,6); }
+  }
+  // aura palette if purchased
+  let auraStartY = startY;
+  if (manager.purchasedAura) {
+    auraStartY = startY + s + 24;
+    textSize(14); fill(255); textAlign(LEFT, TOP); text('Aura color:', startX, auraStartY - 20);
+    for (let i=0;i<palette.length;i++){
+      const col = palette[i]; fill(col[0],col[1],col[2]); stroke(255); rect(startX + i*(s+12), auraStartY, s, s,6);
+      if (manager.auraColor && manager.auraColor[0]===col[0] && manager.auraColor[1]===col[1]) { noFill(); stroke(255,235,0); rect(startX + i*(s+12), auraStartY, s, s,6); }
+    }
   }
   // live preview center
   const px = width/2, py = height/2 - 20, ps = 120;
@@ -1350,7 +1384,8 @@ function drawCustomize(manager) {
   if (manager.purchasedAura) {
     push(); blendMode(ADD);
     noStroke();
-    fill(manager.selectedColor[0], manager.selectedColor[1], manager.selectedColor[2], 120);
+    const ac = manager.auraColor || manager.selectedColor;
+    fill(ac[0], ac[1], ac[2], 120);
     ellipse(px, py, ps * 1.8);
     pop();
   }
@@ -1485,9 +1520,18 @@ function mousePressed() {
     // palette
     const palette = [[255,50,180],[0,200,255],[120,255,80],[255,160,0],[180,90,255]];
     const startX = 40; const startY = 80; const s = 40;
+    // shape color row
     for (let i=0;i<palette.length;i++){
       const x = startX + i*(s+12);
       if (mX >= x && mX <= x+s && mY >= startY && mY <= startY+s) { globalManager.pickColor(palette[i]); return; }
+    }
+    // aura color row if purchased
+    if (globalManager.purchasedAura) {
+      const auraY = startY + s + 24;
+      for (let i=0;i<palette.length;i++){
+        const x = startX + i*(s+12);
+        if (mX >= x && mX <= x+s && mY >= auraY && mY <= auraY+s) { globalManager.pickAuraColor(palette[i]); return; }
+      }
     }
     // shapes bottom
     const shapes = ['circle','square','x','star']; const sy = height - 140; const sw = 80;
