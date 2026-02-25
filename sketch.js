@@ -87,6 +87,8 @@ class GameManager {
     this.purchasedShapes = this.load('purchasedShapes', ['square']);
     this.selectedShape = this.load('selectedShape', 'square');
     this.selectedColor = this.load('selectedColor', [0,255,200]);
+    // aura style purchase (grants a glowing outline in the selected color)
+    this.purchasedAura = this.load('purchasedAura', false);
     this.pendingPurchase = null;
     this.equipFlashUntil = 0;
     this.equipFlashShape = null;
@@ -214,6 +216,7 @@ class GameManager {
       this.save('purchasedShapes', this.purchasedShapes);
       this.save('selectedShape', this.selectedShape);
       this.save('selectedColor', this.selectedColor);
+      this.save('purchasedAura', this.purchasedAura);
       this.save('volume', this.volume);
       this.save('difficulty', this.difficulty);
     } catch(e) { /* ignore storage errors */ }
@@ -447,6 +450,16 @@ class Player {
   }
   render(cx, centerX, centerY, opacity=1) {
     push(); translate(centerX, this.y);
+    // aura glow (if purchased)
+    if (this.manager && this.manager.purchasedAura) {
+      push();
+      blendMode(ADD);
+      noStroke();
+      const col = this.manager.selectedColor || this.color;
+      fill(col[0], col[1], col[2], 120 * opacity);
+      ellipse(0, 0, this.width * 1.8, this.height * 1.8);
+      pop();
+    }
     // visual glow disabled
     // no rotation
     noFill(); stroke(255); strokeWeight(2);
@@ -1239,22 +1252,42 @@ function drawMenu() {
 function drawShop(manager) {
   push(); fill(255); textSize(20); textAlign(CENTER, TOP);
   text('Shop', width/2, 24);
-  const items = [{name:'circle',price:0},{name:'square',price:0},{name:'x',price:0},{name:'star',price:100}];
-  const startX = width/2 - 200; const y = 120; const w = 120; const h = 120; const gap = 40;
+  // include shapes plus aura style
+  const items = [
+    {name:'circle',price:0},
+    {name:'square',price:0},
+    {name:'x',price:0},
+    {name:'star',price:100},
+    {name:'aura',price:70}
+  ];
+  const startX = width/2 - 240; const y = 120; const w = 120; const h = 120; const gap = 40;
   for (let i=0;i<items.length;i++){
     const it = items[i]; const x = startX + i*(w+gap);
     rectMode(CORNER); stroke(255); fill(10); rect(x,y,w,h,8);
-    fill(255); noStroke(); textSize(14); textAlign(CENTER,CENTER); text(it.name, x+w/2, y+18);
-    // lock overlay
-    if (manager.purchasedShapes.indexOf(it.name) === -1) {
-      fill(255,204,0); text('Price: '+it.price, x+w/2, y+36);
-      fill(0,0,0,140); rect(x,y,w,h,8);
-      fill(255,255,255); text('LOCKED', x+w/2, y+h-18);
-    } else {
-      if (manager.selectedShape === it.name) {
-        fill(50,255,50); text('Equipped', x+w/2, y+36);
+    fill(255); noStroke(); textSize(14); textAlign(CENTER,CENTER);
+    // display name differently for aura
+    if (it.name === 'aura') text('Aura', x+w/2, y+18);
+    else text(it.name, x+w/2, y+18);
+    // lock/owned overlay
+    if (it.name === 'aura') {
+      if (!manager.purchasedAura) {
+        fill(255,204,0); text('Price: '+it.price, x+w/2, y+36);
+        fill(0,0,0,140); rect(x,y,w,h,8);
+        fill(255,255,255); text('LOCKED', x+w/2, y+h-18);
       } else {
-        fill(0,200,255); text('Owned', x+w/2, y+36);
+        fill(0,200,255); text('Active', x+w/2, y+36);
+      }
+    } else {
+      if (manager.purchasedShapes.indexOf(it.name) === -1) {
+        fill(255,204,0); text('Price: '+it.price, x+w/2, y+36);
+        fill(0,0,0,140); rect(x,y,w,h,8);
+        fill(255,255,255); text('LOCKED', x+w/2, y+h-18);
+      } else {
+        if (manager.selectedShape === it.name) {
+          fill(50,255,50); text('Equipped', x+w/2, y+36);
+        } else {
+          fill(0,200,255); text('Owned', x+w/2, y+36);
+        }
       }
     }
   }
@@ -1295,6 +1328,7 @@ function drawCustomize(manager) {
   push(); fill(255); textSize(20); textAlign(LEFT, TOP);
   text('Customize', 16, 16);
   textSize(14); textAlign(RIGHT, TOP); text('Coins: ' + manager.totalCoins, width-16, 20);
+  if (manager.purchasedAura) { textSize(12); textAlign(RIGHT, TOP); text('Aura style active', width-16, 36); }
   textSize(14); textAlign(LEFT, TOP); text('Press M to return', 40, height-40);
   // palette (no black, no white)
   const palette = [[255,50,180],[0,200,255],[120,255,80],[255,160,0],[180,90,255]];
@@ -1304,9 +1338,17 @@ function drawCustomize(manager) {
     if (manager.selectedColor && manager.selectedColor[0]===col[0] && manager.selectedColor[1]===col[1]) { noFill(); stroke(255,235,0); rect(startX + i*(s+12), startY, s, s,6); }
   }
   // live preview center
+  const px = width/2, py = height/2 - 20, ps = 120;
+  // aura preview
+  if (manager.purchasedAura) {
+    push(); blendMode(ADD);
+    noStroke();
+    fill(manager.selectedColor[0], manager.selectedColor[1], manager.selectedColor[2], 120);
+    ellipse(px, py, ps * 1.8);
+    pop();
+  }
   fill(manager.selectedColor[0], manager.selectedColor[1], manager.selectedColor[2]); stroke(255);
   const shp = manager.selectedShape || 'square';
-  const px = width/2, py = height/2 - 20, ps = 120;
   if (shp === 'circle') {
     ellipse(px, py, ps);
   } else if (shp === 'square') {
@@ -1383,19 +1425,37 @@ function mousePressed() {
     // handle confirmation
     if (globalManager.pendingPurchase) {
       const it = globalManager.pendingPurchase;
-      if (globalManager.buyShape(it.name, it.price)) globalManager.pendingPurchase = null;
-      else globalManager.pendingPurchase = null; // dismiss
+      if (it.name === 'aura') {
+        if (globalManager.buyAura(it.price)) globalManager.pendingPurchase = null;
+        else globalManager.pendingPurchase = null;
+      } else {
+        if (globalManager.buyShape(it.name, it.price)) globalManager.pendingPurchase = null;
+        else globalManager.pendingPurchase = null; // dismiss
+      }
       return;
     }
-    // detect clicks on shop items
-    const items = [{name:'circle',price:0},{name:'square',price:0},{name:'x',price:0},{name:'star',price:100}];
-    const startX = width/2 - 200; const y = 120; const w = 120; const h = 120; const gap = 40;
+    // detect clicks on shop items (includes aura)
+    const items = [
+      {name:'circle',price:0},
+      {name:'square',price:0},
+      {name:'x',price:0},
+      {name:'star',price:100},
+      {name:'aura',price:70}
+    ];
+    const startX = width/2 - 240; const y = 120; const w = 120; const h = 120; const gap = 40;
     for (let i=0;i<items.length;i++){
       const x = startX + i*(w+gap);
       if (mX >= x && mX <= x+w && mY >= y && mY <= y+h) {
         const it = items[i];
+        if (it.name === 'aura') {
+          if (!globalManager.purchasedAura) {
+            globalManager.pendingPurchase = it; return;
+          }
+          // aura has no equip action, just owned
+          return;
+        }
         if (globalManager.purchasedShapes.indexOf(it.name) === -1) {
-          // ask to purchase
+          // ask to purchase shape
           globalManager.pendingPurchase = it; return;
         } else {
           globalManager.equipShape(it.name); return;
