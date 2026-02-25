@@ -994,27 +994,30 @@ function renderUI(manager) {
     text('Best: ' + hs, scoreX, scoreY+18);
     text('Time: ' + (millis()/1000).toFixed(1), scoreX, scoreY+36);
     // level / xp bar (left side)
-    const barX = 20;
+    const barX = 10; // moved further left so entire tube is visible
     const barY = 20;
     const barW = 120;
     const barH = 16;
     // label above bar
     textSize(14);
     textAlign(LEFT, CENTER);
-    text('Level ' + manager.level, barX, barY - barH/2 - 4);
+    const lvl = (manager.level != null ? manager.level : 0);
+    text('Level ' + lvl, barX, barY - barH/2 - 4);
     // draw tube-shaped bar
     stroke(255);
     noFill();
     rect(barX, barY, barW, barH, barH/2);
     fill(0,200,120);
-    const xpNext = manager.xpToNextLevel();
-    const pct = xpNext ? constrain(manager.xp / xpNext, 0, 1) : 0;
+    let xpNext = manager.xpToNextLevel();
+    if (!xpNext || isNaN(xpNext)) xpNext = 1.0;
+    const xpVal = (manager.xp!=null && !isNaN(manager.xp)) ? manager.xp : 0;
+    const pct = xpNext ? constrain(xpVal / xpNext, 0, 1) : 0;
     // filled portion as a narrower pill
     rect(barX, barY, barW * pct, barH, barH/2);
     // optional text inside bar
     textSize(12);
     textAlign(CENTER, CENTER);
-    text(Math.floor(manager.xp*100)/100 + '/' + xpNext, barX + barW/2, barY + barH/2);
+    text(Math.floor(xpVal*100)/100 + '/' + xpNext, barX + barW/2, barY + barH/2);
   }
   pop();
 
