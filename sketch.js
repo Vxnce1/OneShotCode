@@ -434,7 +434,7 @@ class Player {
       this.inputBufferUntil = -9999;
     }
 
-    // 🔥 Rotate ONLY when in the air
+    // 🔥 Rotate ONLY when in the air, and flip direction with gravity
     if (!this.grounded) {
       this.rotation += this.rotSpeed * dt * this.gravityDir;
     }
@@ -454,19 +454,12 @@ class Player {
   }
 
   render(cx, centerX, centerY, opacity=1) {
-    push(); translate(centerX, this.y);
-    // aura glow (if purchased)
-    if (this.manager && this.manager.purchasedAura) {
-      push();
-      blendMode(ADD);
-      noStroke();
-      const col = this.manager.selectedColor || this.color;
-      fill(col[0], col[1], col[2], 120 * opacity);
-      ellipse(0, 0, this.width * 1.8, this.height * 1.8);
-      pop();
-    }
-    // visual glow disabled
-    // no rotation
+    push();
+    translate(centerX, this.y);
+
+    // apply rotation
+    rotate(this.rotation);
+
     noFill(); stroke(255); strokeWeight(2);
     fill(this.color[0], this.color[1], this.color[2], 220*opacity);
 
