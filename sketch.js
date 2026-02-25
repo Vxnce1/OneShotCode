@@ -107,13 +107,12 @@ class GameManager {
     this.coins = (this.coins||0) + n;
     this.totalCoins = (this.totalCoins||0) + n;
     try { this.save('totalCoins', this.totalCoins); } catch(e){}
-    // xp gain for every 20 coins collected
+    // xp gain for every 20 coins collected: quarter-bar per 20 coins
     this.coinXpAcc = (this.coinXpAcc||0) + n;
-    if (this.coinXpAcc >= 20) {
-      const xpGain = Math.floor(this.coinXpAcc / 20);
-      this.coinXpAcc -= xpGain * 20;
+    while (this.coinXpAcc >= 20) {
+      this.coinXpAcc -= 20;
       try { this.save('coinXpAcc', this.coinXpAcc); } catch(e){}
-      this.addXp(xpGain);
+      this.addXp(0.25);
     }
     // update per-run best (highscore) as coins collected in a single run
     try {
@@ -133,8 +132,10 @@ class GameManager {
 
   // helpers for xp/levels
   xpToNextLevel() {
-    // threshold grows linearly with level; slower gain at higher levels
-    return 20 * this.level;
+    // bar is treated as 0..1; each level requires 1.0 xp.
+    // higher levels could optionally require more, but current design
+    // always uses 1.0 so each 20 coins gives a quarter of the bar.
+    return 1.0;
   }
 
   addXp(n) {
@@ -983,7 +984,7 @@ function renderUI(manager) {
   push(); noStroke(); fill(255); textSize(14);
   const pad = 12;
   const scoreX = width - 220; const scoreY = 20;
-  // show coins as score and high score
+  // show coins as score and high score (right side)
   const p = manager.players[0];
   if (p) {
     textAlign(LEFT, TOP);
@@ -992,33 +993,49 @@ function renderUI(manager) {
     const hs = manager.load(hsKey, 0);
     text('Best: ' + hs, scoreX, scoreY+18);
     text('Time: ' + (millis()/1000).toFixed(1), scoreX, scoreY+36);
-    // level / xp bar
-    text('Level: ' + manager.level, scoreX, scoreY+54);
-    const xpNext = manager.xpToNextLevel();
-    const barX = scoreX;
-    const barY = scoreY + 74;
-    const barW = 100;
-    const barH = 10;
+    // level / xp bar (left side)
+    const barX = 20;
+    const barY = 20;
+    const barW = 120;
+    const barH = 16;
+    // label above bar
+    textSize(14);
+    textAlign(LEFT, CENTER);
+    text('Level ' + manager.level, barX, barY - barH/2 - 4);
+    // draw tube-shaped bar
     stroke(255);
     noFill();
-    rect(barX, barY, barW, barH);
+    rect(barX, barY, barW, barH, barH/2);
     fill(0,200,120);
+    const xpNext = manager.xpToNextLevel();
     const pct = xpNext ? constrain(manager.xp / xpNext, 0, 1) : 0;
-    rect(barX, barY, barW * pct, barH);
+    // filled portion as a narrower pill
+    rect(barX, barY, barW * pct, barH, barH/2);
+    // optional text inside bar
     textSize(12);
-    textAlign(LEFT, TOP);
-    text(manager.xp + '/' + xpNext, barX, barY + barH + 2);
+    textAlign(CENTER, CENTER);
+    text(Math.floor(manager.xp*100)/100 + '/' + xpNext, barX + barW/2, barY + barH/2);
   }
   pop();
 
   // level-up indicator text (fades over timer)
   if (manager.levelUpTimer > 0) {
-    const alpha = 255 * (manager.levelUpTimer / 2.0);
+    const t = manager.levelUpTimer / 2.0;
+    const alpha = 255 * t;
     // simple scale pulse as timer decreases
-    const scaleAmt = 1 + 0.5 * Math.sin((1 - manager.levelUpTimer/2.0) * Math.PI);
+    const scaleAmt = 1 + 0.5 * Math.sin((1 - t) * Math.PI);
+    // outer ring
+    push();
+    noFill();
+    stroke(255,235,0, alpha);
+    strokeWeight(4);
+    const size = 200 * scaleAmt;
+    ellipse(width/2, height/2, size, size);
+    pop();
+    // text
     push(); textSize(32 * scaleAmt); textAlign(CENTER, CENTER);
     fill(255,235,0, alpha);
-    text('Level increase!', width/2, height/2);
+    text('LEVEL UP!', width/2, height/2);
     pop();
   }
 }
