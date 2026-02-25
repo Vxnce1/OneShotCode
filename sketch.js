@@ -450,7 +450,6 @@ class Player {
   }
   render(cx, centerX, centerY, opacity=1) {
     push(); translate(centerX, this.y);
-    translate(width/2, this.y); // player is drawn centered on screen 
     rotate(this.rotation);
     // visual glow disabled
     // no rotation
