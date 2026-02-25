@@ -481,16 +481,9 @@ class Player {
       pop();
     }
 
-<<<<<<< HEAD
     // rotation disabled; draw upright
     noFill(); stroke(255); strokeWeight(2);
     fill(this.color[0], this.color[1], this.color[2], 220*opacity);
-=======
-    noFill();
-    stroke(255);
-    strokeWeight(2);
-    fill(this.color[0], this.color[1], this.color[2], 220 * opacity);
->>>>>>> a4a8b500c54e2ce683659cb245f94d8baa3bcecd
 
     if (this.shape === 'circle') {
       ellipse(0, 0, this.width, this.height);
