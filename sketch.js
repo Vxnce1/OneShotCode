@@ -450,14 +450,7 @@ class Player {
       this.inputBufferUntil = -9999;
     }
 
-<<<<<<< HEAD
     // rotation is unused; keep sprite upright
-=======
-    // 🔥 Rotate ONLY when truly airborne (vy ≠ 0)
-    if (Math.abs(this.vy) > 0.01) {
-      this.rotation += this.rotSpeed * dt * this.gravityDir;
-    }
->>>>>>> a4a8b500c54e2ce683659cb245f94d8baa3bcecd
   }
 
   getAABB() {
