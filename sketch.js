@@ -67,7 +67,7 @@ function rectsIntersect(a,b){
 /* ======= Core Game State Manager ======= */
 const STATES = {
   LOADING: 'LOADING', MENU: 'MENU', SHOP: 'SHOP', CUSTOMIZE: 'CUSTOMIZE', TUTORIAL: 'TUTORIAL', SETTINGS: 'SETTINGS',
-  PLAYING_SINGLE: 'PLAYING_SINGLE', /* PLAYING_MULTI: 'PLAYING_MULTI', */ PAUSED: 'PAUSED', GAMEOVER: 'GAMEOVER'
+  PLAYING_SINGLE: 'PLAYING_SINGLE', PLAYING_MULTI: 'PLAYING_MULTI', MULTI_SETUP: 'MULTI_SETUP', PAUSED: 'PAUSED', GAMEOVER: 'GAMEOVER'
 };
 
 class GameManager {
@@ -213,6 +213,7 @@ class GameManager {
     }
   }
   startSingle() {
+    this.lastMode = STATES.PLAYING_SINGLE;
     this.seed = (Date.now() & 0xffffffff) ^ 0xdeadbeef;
     this.rng = new SeededRandom(this.seed);
     this.players = [new Player(0,this)];
@@ -224,9 +225,53 @@ class GameManager {
     this.slowMotion = 0;
     this.changeState(STATES.PLAYING_SINGLE);
   }
-  // multiplayer removed; alias to single-player start
+  // multiplayer start using current multiConfig
   startMulti() {
-    this.startSingle();
+    this.lastMode = STATES.PLAYING_MULTI;
+    // ensure we have a config
+    if (!this.multiConfig) {
+      // fallback to using current selected settings for both
+      this.multiConfig = {stage:1,
+        p1:{
+          selectedShape:this.selectedShape,
+          selectedColor:this.selectedColor.slice(),
+          auraColor:this.auraColor?this.auraColor.slice():null,
+          auraEnabled:this.auraEnabled
+        },
+        p2:{
+          selectedShape:this.selectedShape,
+          selectedColor:this.selectedColor.slice(),
+          auraColor:this.auraColor?this.auraColor.slice():null,
+          auraEnabled:this.auraEnabled
+        }
+      };
+    }
+    this.seed = (Date.now() & 0xffffffff) ^ 0xdeadbeef;
+    this.rng = new SeededRandom(this.seed);
+    // create two players
+    this.players = [new Player(0,this), new Player(1,this)];
+    this.players.forEach(p=>p.resetForRun());
+    // apply config to each
+    const cfg = this.multiConfig;
+    this.players[0].shape = cfg.p1.selectedShape;
+    this.players[0].color = cfg.p1.selectedColor.slice();
+    this.players[1].shape = cfg.p2.selectedShape;
+    this.players[1].color = cfg.p2.selectedColor.slice();
+    // aura properties stored on manager, so during render we must respect player index for color
+    // we'll store two separate aura colors etc
+    this.auraColorP1 = cfg.p1.auraColor;
+    this.auraColorP2 = cfg.p2.auraColor;
+    this.auraEnabledP1 = cfg.p1.auraEnabled;
+    this.auraEnabledP2 = cfg.p2.auraEnabled;
+    // set starting distances so player2 is behind
+    this.players[0].distance = 0;
+    this.players[1].distance = -100;
+    this.map = new MapGenerator(this.rng, this.difficulty);
+    this.coins = 0;
+    this.audio.start();
+    this.runTime = 0;
+    this.slowMotion = 0;
+    this.changeState(STATES.PLAYING_MULTI);
   }
   startTutorial() {
     this.seed = 0x12345678;
@@ -503,79 +548,94 @@ class Player {
     translate(centerX, this.y);
 
     // aura glow (if purchased and enabled)
-    if (this.manager && this.manager.purchasedAura && this.manager.auraEnabled) {
-      push();
-      blendMode(ADD);
-      noStroke();
-      const col = this.manager.auraColor || this.manager.selectedColor || this.color;
-      // pulsate alpha between ~60 and ~180 over time
-      const t = (this.manager.runTime || 0) * 2.0;
-      const glow = 0.5 + 0.5 * Math.sin(t);
-      const a = 60 + 120 * glow;
-      // hide when very dim to avoid seeing ghosted circle
-      if (a > 40) {
-        fill(col[0], col[1], col[2], a * opacity);
-        const sizeFactor = 1.4; // slightly larger than shape, but smaller than before
-        // draw same shape as player
-        if (this.shape === 'circle') {
-          ellipse(0, 0, this.width * sizeFactor, this.height * sizeFactor);
-        } else if (this.shape === 'square') {
-          rectMode(CENTER);
-          rect(0, 0, this.width * sizeFactor, this.height * sizeFactor);
-        } else if (this.shape === 'x') {
-          strokeWeight(4);
-          line(-this.width * sizeFactor/2, -this.height * sizeFactor/2, this.width * sizeFactor/2, this.height * sizeFactor/2);
-          line(-this.width * sizeFactor/2, this.height * sizeFactor/2, this.width * sizeFactor/2, -this.height * sizeFactor/2);
-          strokeWeight(2);
-        } else if (this.shape === 'star') {
-          const r = (this.width * sizeFactor) / 2;
-          const r2 = r * 0.5;
-          beginShape();
-          for (let i = 0; i < 5; i++) {
-            let a2 = -Math.PI/2 + i * (2 * Math.PI / 5);
-            vertex(Math.cos(a2) * r, Math.sin(a2) * r);
-            a2 += Math.PI / 5;
-            vertex(Math.cos(a2) * r2, Math.sin(a2) * r2);
-          }
-          endShape(CLOSE);
+    if (this.manager && this.manager.purchasedAura) {
+      // determine color/enable based on mode
+      let col;
+      let enabled = false;
+      if (this.manager.state === STATES.PLAYING_MULTI) {
+        if (this.index === 0) {
+          enabled = this.manager.auraEnabledP1;
+          col = this.manager.auraColorP1 || this.manager.selectedColor || this.color;
+        } else {
+          enabled = this.manager.auraEnabledP2;
+          col = this.manager.auraColorP2 || this.manager.selectedColor || this.color;
         }
+      } else {
+        enabled = this.manager.auraEnabled;
+        col = this.manager.auraColor || this.manager.selectedColor || this.color;
       }
+      if (enabled) {
+        push();
+        blendMode(ADD);
+        noStroke();
+        // pulsate alpha between ~60 and ~180 over time
+        const t = (this.manager.runTime || 0) * 2.0;
+        const glow = 0.5 + 0.5 * Math.sin(t);
+        const a = 60 + 120 * glow;
+        // hide when very dim to avoid seeing ghosted circle
+        if (a > 40) {
+          fill(col[0], col[1], col[2], a * opacity);
+          const sizeFactor = 1.4; // slightly larger than shape, but smaller than before
+          // draw same shape as player
+          if (this.shape === 'circle') {
+            ellipse(0, 0, this.width * sizeFactor, this.height * sizeFactor);
+          } else if (this.shape === 'square') {
+            rectMode(CENTER);
+            rect(0, 0, this.width * sizeFactor, this.height * sizeFactor);
+          } else if (this.shape === 'x') {
+            strokeWeight(4);
+            line(-this.width * sizeFactor/2, -this.height * sizeFactor/2, this.width * sizeFactor/2, this.height * sizeFactor/2);
+            line(-this.width * sizeFactor/2, this.height * sizeFactor/2, this.width * sizeFactor/2, -this.height * sizeFactor/2);
+            strokeWeight(2);
+          } else if (this.shape === 'star') {
+            const r = (this.width * sizeFactor) / 2;
+            const r2 = r * 0.5;
+            beginShape();
+            for (let i = 0; i < 5; i++) {
+              let a2 = -Math.PI/2 + i * (2 * Math.PI / 5);
+              vertex(Math.cos(a2) * r, Math.sin(a2) * r);
+              a2 += Math.PI / 5;
+              vertex(Math.cos(a2) * r2, Math.sin(a2) * r2);
+            }
+            endShape(CLOSE);
+          }
+        }
+        pop();
+      }
+
+      // rotation disabled; draw upright
+      noFill(); stroke(255); strokeWeight(2);
+      fill(this.color[0], this.color[1], this.color[2], 220*opacity);
+
+      if (this.shape === 'circle') {
+        ellipse(0, 0, this.width, this.height);
+      } else if (this.shape === 'square') {
+        rectMode(CENTER);
+        rect(0, 0, this.width, this.height);
+      } else if (this.shape === 'triangle') {
+        // upward-pointing triangle
+        const w = this.width / 2;
+        const h = this.height / 2;
+        triangle(-w, h, w, h, 0, -h);
+      } else if (this.shape === 'x') {
+        strokeWeight(4);
+        line(-this.width/2, -this.height/2, this.width/2, this.height/2);
+        line(-this.width/2, this.height/2, this.width/2, -this.height/2);
+        strokeWeight(2);
+      } else if (this.shape === 'star') {
+        const r = this.width / 2;
+        const r2 = r * 0.5;
+        beginShape();
+        for (let i = 0; i < 5; i++) {
+          let a = -Math.PI/2 + i * (2 * Math.PI / 5);
+          vertex(Math.cos(a) * r, Math.sin(a) * r);
+          a += Math.PI / 5;
+          vertex(Math.cos(a) * r2, Math.sin(a) * r2);
+        }
+        endShape(CLOSE);
+      }
+
       pop();
-    }
-
-    // rotation disabled; draw upright
-    noFill(); stroke(255); strokeWeight(2);
-    fill(this.color[0], this.color[1], this.color[2], 220*opacity);
-
-    if (this.shape === 'circle') {
-      ellipse(0, 0, this.width, this.height);
-    } else if (this.shape === 'square') {
-      rectMode(CENTER);
-      rect(0, 0, this.width, this.height);
-    } else if (this.shape === 'triangle') {
-      // upward-pointing triangle
-      const w = this.width / 2;
-      const h = this.height / 2;
-      triangle(-w, h, w, h, 0, -h);
-    } else if (this.shape === 'x') {
-      strokeWeight(4);
-      line(-this.width/2, -this.height/2, this.width/2, this.height/2);
-      line(-this.width/2, this.height/2, this.width/2, -this.height/2);
-      strokeWeight(2);
-    } else if (this.shape === 'star') {
-      const r = this.width / 2;
-      const r2 = r * 0.5;
-      beginShape();
-      for (let i = 0; i < 5; i++) {
-        let a = -Math.PI/2 + i * (2 * Math.PI / 5);
-        vertex(Math.cos(a) * r, Math.sin(a) * r);
-        a += Math.PI / 5;
-        vertex(Math.cos(a) * r2, Math.sin(a) * r2);
-      }
-      endShape(CLOSE);
-    }
-
-    pop();
   }
 }
 
@@ -1102,6 +1162,38 @@ function keyPressed() {
   if (key === 'M' || key === 'm') {
     globalManager.changeState(STATES.MENU);
   }
+  // multiplayer request from menu
+  if (key === '2' && globalManager.state === STATES.MENU) {
+    if (globalManager.level >= 10) {
+      // prepare temporary config with current selections
+      globalManager.multiConfig = {
+        stage: 1,
+        p1:{
+          selectedShape: globalManager.selectedShape,
+          selectedColor: globalManager.selectedColor.slice(),
+          auraColor: globalManager.auraColor?globalManager.auraColor.slice():null,
+          auraEnabled: globalManager.auraEnabled
+        },
+        p2:{
+          selectedShape: globalManager.selectedShape,
+          selectedColor: globalManager.selectedColor.slice(),
+          auraColor: globalManager.auraColor?globalManager.auraColor.slice():null,
+          auraEnabled: globalManager.auraEnabled
+        }
+      };
+      globalManager.changeState(STATES.MULTI_SETUP);
+    } else {
+      // maybe flash text? for now do nothing
+    }
+  }
+  if (globalManager.state === STATES.MULTI_SETUP && keyCode === ENTER) {
+    const cfg = globalManager.multiConfig;
+    if (cfg && cfg.stage === 1) {
+      cfg.stage = 2;
+    } else {
+      globalManager.startMulti();
+    }
+  }
   if ((key === 'D' || key === 'd') && globalManager.state === STATES.MENU) {
     // run a deterministic seed sweep (non-blocking for small counts)
     const start = 1; const count = 200;
@@ -1194,7 +1286,11 @@ function draw() {
     if (window.menuGameOverButton) window.menuGameOverButton.hide();
     drawMenu();
     if (window.volumeSlider) volumeSlider.show();
-  } else if (globalManager.state === STATES.PLAYING_SINGLE || globalManager.state === STATES.TUTORIAL) {
+  } else if (globalManager.state === STATES.MULTI_SETUP) {
+    // setup screen for multiplayer
+    if (window.volumeSlider) volumeSlider.hide();
+    drawMultiSetup(globalManager);
+  } else if (globalManager.state === STATES.PLAYING_SINGLE || globalManager.state === STATES.PLAYING_MULTI || globalManager.state === STATES.TUTORIAL) {
     if (window.resumeButton) window.resumeButton.hide();
     if (window.restartButton) window.restartButton.hide();
     if (window.menuButton) window.menuButton.hide();
@@ -1300,18 +1396,31 @@ function draw() {
           if (!coin.active || coin.collected) continue;
           const cx = coin.x - camX + width/2; const cy = coin.y;
           push(); fill(255,200,0); stroke(255); ellipse(cx, cy, coin.size); pop();
-          if (rectsIntersect({ x: coin.x-coin.size/2, y: coin.y-coin.size/2, w: coin.size, h: coin.size }, globalManager.players[0].getAABB())) {
-            coin.collected = true; coin.active = false; globalManager.addCoins(1); globalManager.map.coinPool.release(coin);
+          // check collision against all active players
+          for (const p of globalManager.players) {
+            if (!p.alive) continue;
+            if (rectsIntersect({ x: coin.x-coin.size/2, y: coin.y-coin.size/2, w: coin.size, h: coin.size }, p.getAABB())) {
+              coin.collected = true; coin.active = false; globalManager.addCoins(1); globalManager.map.coinPool.release(coin);
+              break;
+            }
           }
         }
         // portals removed; nothing to render
       }
       // render particles
       if (globalManager.particles) globalManager.particles.render(camX);
-      globalManager.players[0].render(null, width/2, globalManager.players[0].y);
+      if (globalManager.state === STATES.PLAYING_MULTI) {
+        // player1 center, player2 slightly to left
+        globalManager.players.forEach((p,i)=>{
+          if (!p.alive) return;
+          const offset = i===0 ? 0 : -60;
+          p.render(null, width/2 + offset, p.y);
+        });
+      } else {
+        globalManager.players[0].render(null, width/2, globalManager.players[0].y);
+      }
       renderUI(globalManager);
       pop();
-      // multiplayer rendering removed; only player 0 is drawn above
   } else if (globalManager.state === STATES.PAUSED) {
     fill(255); textSize(32); textAlign(CENTER, CENTER); text('PAUSED', width/2, height/2 - 60);
     if (!window.resumeButton) {
@@ -1336,15 +1445,23 @@ function draw() {
   } else if (globalManager.state === STATES.GAMEOVER) {
     if (window.volumeSlider) volumeSlider.hide();
     fill(255); textSize(28); textAlign(CENTER, CENTER); text('GAME OVER', width/2, height/2 - 60);
-    const score = globalManager.coins;
-    textSize(16); text('Coins this run: ' + score, width/2, height/2 - 30);
-    const hsKey = 'highscore';
-    const hs = globalManager.load(hsKey,0);
-    text('Best: ' + hs, width/2, height/2 - 10);
+    if (globalManager.lastMode === STATES.PLAYING_MULTI) {
+      const winner = globalManager.winner || 'Player 1';
+      textSize(20); text(winner + ' wins!', width/2, height/2 - 30);
+    } else {
+      const score = globalManager.coins;
+      textSize(16); text('Coins this run: ' + score, width/2, height/2 - 30);
+      const hsKey = 'highscore';
+      const hs = globalManager.load(hsKey,0);
+      text('Best: ' + hs, width/2, height/2 - 10);
+    }
     if (!window.restartGameOverButton) {
       window.restartGameOverButton = createButton('Restart');
       window.restartGameOverButton.position(width/2 - 50, height/2 + 10);
-      window.restartGameOverButton.mousePressed(() => globalManager.startSingle());
+      window.restartGameOverButton.mousePressed(() => {
+        if (globalManager.lastMode === STATES.PLAYING_MULTI) globalManager.startMulti();
+        else globalManager.startSingle();
+      });
     }
     if (!window.menuGameOverButton) {
       window.menuGameOverButton = createButton('Menu');
@@ -1363,11 +1480,18 @@ function draw() {
 function drawMenu() {
   push(); textAlign(CENTER, CENTER); fill(255);
   textSize(48); text('λ-Dash', width/2, height*0.25);
-  textSize(18); text('Press Enter to Start', width/2, height*0.35);
-  textSize(14); text('W / Space to jump. P to pause. C to customize, H for shop, T for tutorial', width/2, height*0.42);
+  textSize(18); text('Press Enter to Start (single)', width/2, height*0.35);
+  textSize(16);
+  if (globalManager && globalManager.level >= 10) {
+    text('Press 2 for multiplayer', width/2, height*0.39);
+  } else {
+    text('Multiplayer unlocks at level 10', width/2, height*0.39);
+  }
+  textSize(14); text('W / Space to jump. P to pause. C to customize, H for shop, T for tutorial', width/2, height*0.47);
   textSize(12); text('Press D to run deterministic seed-safety test (dev)', width/2, height*0.48);
   textSize(12); text('Difficulty: ' + (globalManager?globalManager.difficulty:'?'), width/2, height*0.52);
   textSize(12); text('Total Coins: ' + (globalManager?globalManager.totalCoins:0), width/2, height*0.56);
+  if (globalManager) { textSize(12); text('Level: ' + (globalManager.level||0), width/2, height*0.58); }
   if (globalManager && globalManager.debugTestResults) {
     const res = globalManager.debugTestResults;
     textSize(12); textAlign(LEFT, TOP);
@@ -1468,18 +1592,23 @@ function drawSettings(manager) {
   pop();
 }
 
-function drawCustomize(manager) {
+function drawMultiSetup(manager) {
+  // configure player 1 then player 2
   push(); fill(255); textSize(20); textAlign(LEFT, TOP);
-  text('Customize', 16, 16);
+  const cfg = manager.multiConfig;
+  if (!cfg) { text('Error: no multi config', 16,16); pop(); return; }
+  const stage = cfg.stage;
+  const player = stage === 1 ? cfg.p1 : cfg.p2;
+  text('Player ' + stage + ' setup', 16, 16);
   textSize(14); textAlign(RIGHT, TOP); text('Coins: ' + manager.totalCoins, width-16, 20);
   if (manager.purchasedAura) { textSize(12); textAlign(RIGHT, TOP); text('Aura style active', width-16, 36); }
-  textSize(14); textAlign(LEFT, TOP); text('Press M to return', 40, height-40);
-  // palette (no black, no white) for shape
+  textSize(14); textAlign(LEFT, TOP); text('Press M to cancel, Enter when done', 40, height-40);
+  // palette (no black, no white) for shape color
   const palette = [[255,50,180],[0,200,255],[120,255,80],[255,160,0],[180,90,255]];
   const startX = 40; const startY = 80; const s = 40;
   for (let i=0;i<palette.length;i++){
     const col = palette[i]; fill(col[0],col[1],col[2]); stroke(255); rect(startX + i*(s+12), startY, s, s,6);
-    if (manager.selectedColor && manager.selectedColor[0]===col[0] && manager.selectedColor[1]===col[1]) { noFill(); stroke(255,235,0); rect(startX + i*(s+12), startY, s, s,6); }
+    if (player.selectedColor && player.selectedColor[0]===col[0] && player.selectedColor[1]===col[1]) { noFill(); stroke(255,235,0); rect(startX + i*(s+12), startY, s, s,6); }
   }
   // aura palette if purchased
   let auraStartY = startY;
@@ -1488,8 +1617,51 @@ function drawCustomize(manager) {
     textSize(14); fill(255); textAlign(LEFT, TOP); text('Aura color:', startX, auraStartY - 20);
     for (let i=0;i<palette.length;i++){
       const col = palette[i]; fill(col[0],col[1],col[2]); stroke(255); rect(startX + i*(s+12), auraStartY, s, s,6);
-      if (manager.auraColor && manager.auraColor[0]===col[0] && manager.auraColor[1]===col[1]) { noFill(); stroke(255,235,0); rect(startX + i*(s+12), auraStartY, s, s,6); }
+      if (player.auraColor && player.auraColor[0]===col[0] && player.auraColor[1]===col[1]) { noFill(); stroke(255,235,0); rect(startX + i*(s+12), auraStartY, s, s,6); }
     }
+    // aura toggle display
+    textSize(14); textAlign(LEFT, TOP);
+    const toggleY = auraStartY + s + 10;
+    text('Aura: ' + (player.auraEnabled ? 'ON' : 'OFF') + ' (click here to toggle)', startX, toggleY);
+  }
+  // shape preview
+  const px = width/2, py = height/2 - 20, ps = 120;
+  if (manager.purchasedAura && player.auraEnabled) {
+    push(); blendMode(ADD);
+    noStroke();
+    const ac = player.auraColor || player.selectedColor;
+    fill(ac[0], ac[1], ac[2], 120);
+    ellipse(px, py, ps * 1.8);
+    pop();
+  }
+  fill(player.selectedColor[0], player.selectedColor[1], player.selectedColor[2]); stroke(255);
+  const shp = player.selectedShape || 'square';
+  if (shp === 'circle') {
+    ellipse(px, py, ps);
+  } else if (shp === 'square') {
+    rectMode(CENTER); rect(px, py, ps, ps);
+  } else if (shp === 'x') {
+    const half = ps/2;
+    strokeWeight(4);
+    line(px-half, py-half, px+half, py+half);
+    line(px-half, py+half, px+half, py-half);
+    strokeWeight(2);
+  } else if (shp === 'triangle') {
+    const w = ps/2, h = ps/2;
+    triangle(px-w, py+h, px+w, py+h, px, py-h);
+  } else if (shp === 'star') {
+    const r = ps/2;
+    const r2 = r*0.5;
+    beginShape();
+    for (let i = 0; i < 5; i++) {
+      let a = -Math.PI/2 + i * (2 * Math.PI / 5);
+      vertex(px+Math.cos(a)*r, py+Math.sin(a)*r);
+      a += Math.PI / 5;
+      vertex(px+Math.cos(a)*r2, py+Math.sin(a)*r2);
+    }
+    endShape(CLOSE);
+  }
+  pop();
     // aura toggle display
     textSize(14); textAlign(LEFT, TOP);
     const toggleY = auraStartY + s + 10;
@@ -1559,6 +1731,8 @@ function onPlayerDeath(player) {
   // freeze audio and trigger game over immediately
   if (globalManager && globalManager.audio) globalManager.audio.pause();
   if (globalManager.state === STATES.PLAYING_MULTI) {
+    // declare winner (other player)
+    globalManager.winner = (player.index === 0 ? 'Player 2' : 'Player 1');
     for (const p of globalManager.players) p.alive = false;
   }
   // save run coin score as highscore
@@ -1633,6 +1807,49 @@ function mousePressed() {
     }
       // click outside closes settings
     if (!(mX > width/2-260 && mX < width/2+260 && mY > 60 && mY < height-60)) { globalManager.changeState(STATES.MENU); return; }
+  } else if (globalManager.state === STATES.MULTI_SETUP) {
+    const cfg = globalManager.multiConfig;
+    if (!cfg) return;
+    const stage = cfg.stage;
+    const player = stage === 1 ? cfg.p1 : cfg.p2;
+    // palette
+    const palette = [[255,50,180],[0,200,255],[120,255,80],[255,160,0],[180,90,255]];
+    const startX = 40; const startY = 80; const s = 40;
+    // shape color row
+    for (let i=0;i<palette.length;i++){
+      const x = startX + i*(s+12);
+      if (mX >= x && mX <= x+s && mY >= startY && mY <= startY+s) { player.selectedColor = palette[i].slice(); return; }
+    }
+    // aura color row if purchased
+    if (globalManager.purchasedAura) {
+      const auraY = startY + s + 24;
+      for (let i=0;i<palette.length;i++){
+        const x = startX + i*(s+12);
+        if (mX >= x && mX <= x+s && mY >= auraY && mY <= auraY+s) { player.auraColor = palette[i].slice(); return; }
+      }
+      // toggle region
+      const toggleY = auraY + s + 10;
+      const toggleWidth = 200;
+      const toggleHeight = 20;
+      if (mX >= startX && mX <= startX + toggleWidth && mY >= toggleY && mY <= toggleY + toggleHeight) {
+        player.auraEnabled = !player.auraEnabled;
+        return;
+      }
+    }
+    // shapes bottom
+    const shapes = ['circle','square','triangle','x','star']; const sy = height - 140; const sw = 80;
+    for (let i=0;i<shapes.length;i++){ const sx = width/2 - (shapes.length*(sw+16))/2 + i*(sw+16);
+      if (mX >= sx && mX <= sx+sw && mY >= sy && mY <= sy+sw) {
+        const nm = shapes[i];
+        if (globalManager.purchasedShapes.indexOf(nm) === -1) {
+          // cannot buy here
+        } else {
+          player.selectedShape = nm;
+        }
+        return;
+      }
+    }
+    return;
   } else if (globalManager.state === STATES.CUSTOMIZE) {
     // palette
     const palette = [[255,50,180],[0,200,255],[120,255,80],[255,160,0],[180,90,255]];
