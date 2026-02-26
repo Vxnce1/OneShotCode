@@ -59,6 +59,12 @@ function keyReleased() {}
 function mousePressed() {
   if (!globalManager) return;
   const mX = mouseX, mY = mouseY;
+  // clicking anywhere on the main menu should start a run; this
+  // is handy if keyboard focus is lost or Enter isn't working.
+  if (globalManager.state === STATES.MENU) {
+    globalManager.startSingle();
+    return;
+  }
   if (globalManager.state === STATES.SHOP) {
     // handle confirmation
     if (globalManager.pendingPurchase) {

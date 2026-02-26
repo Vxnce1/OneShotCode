@@ -69,6 +69,12 @@ function draw() {
     if (window.restartGameOverButton) window.restartGameOverButton.hide();
     if (window.menuGameOverButton) window.menuGameOverButton.hide();
     drawMenu();
+    // ensure the volume slider never keeps focus – otherwise
+    // pressing Enter will adjust the slider instead of starting
+    // the run.  we only blur if the element actually exists.
+    if (window.volumeSlider && volumeSlider.elt) {
+      volumeSlider.elt.blur();
+    }
     if (window.volumeSlider) volumeSlider.show();
   } else if (globalManager.state === STATES.MULTI_SETUP) {
     // setup screen for multiplayer
@@ -262,29 +268,57 @@ function draw() {
 }
 
 function drawMenu() {
-  push(); textAlign(CENTER, CENTER); fill(255);
-  textSize(48); text('λ-Dash', width/2, height*0.25);
-  textSize(18); text('Press Enter to Start (single)', width/2, height*0.35);
+  // reorganised vertical positions to avoid cramped text and
+  // make it easier to shift lines if new items are added later.
+  push();
+  textAlign(CENTER, CENTER);
+  fill(255);
+  let y = height * 0.25;
+  textSize(48);
+  text('λ-Dash', width/2, y);
+  y += 60;
+
+  textSize(18);
+  text('Press Enter to Start (single)', width/2, y);
+  y += 30;
+
   textSize(16);
   if (globalManager && globalManager.level >= 10) {
-    text('Press 2 for multiplayer', width/2, height*0.39);
+    text('Press 2 for multiplayer', width/2, y);
   } else {
-    text('Multiplayer unlocks at level 10', width/2, height*0.39);
+    text('Multiplayer unlocks at level 10', width/2, y);
   }
-  textSize(14); text('W / Space to jump. P to pause. C to customize, H for shop, T for tutorial', width/2, height*0.47);
-  textSize(12); text('Press D to run deterministic seed-safety test (dev)', width/2, height*0.48);
-  textSize(12); text('Difficulty: ' + (globalManager?globalManager.difficulty:'?'), width/2, height*0.52);
-  textSize(12); text('Total Coins: ' + (globalManager?globalManager.totalCoins:0), width/2, height*0.56);
-  if (globalManager) { textSize(12); text('Level: ' + (globalManager.level||0), width/2, height*0.58); }
+  y += 40;
+
+  textSize(14);
+  text('W / Space to jump. P to pause. C to customize, H for shop, T for tutorial', width/2, y);
+  y += 24;
+
+  textSize(12);
+  text('Press D to run deterministic seed-safety test (dev)', width/2, y);
+  y += 24;
+
+  text('Difficulty: ' + (globalManager ? globalManager.difficulty : '?'), width/2, y);
+  y += 20;
+  text('Total Coins: ' + (globalManager ? globalManager.totalCoins : 0), width/2, y);
+  y += 18;
+  if (globalManager) {
+    text('Level: ' + (globalManager.level || 0), width/2, y);
+    y += 18;
+  }
+
   if (globalManager && globalManager.debugTestResults) {
     const res = globalManager.debugTestResults;
-    textSize(12); textAlign(LEFT, TOP);
-    text('Seed test results: ' + res.length + ' seeds with issues (showing up to 6)', 16, height*0.55);
-    for (let i=0;i<Math.min(res.length,6);i++) {
-      const r = res[i]; textSize(12); text('seed ' + r.seed + ': ' + r.issues.length + ' issues', 16, height*0.58 + i*16);
+    textSize(12);
+    textAlign(LEFT, TOP);
+    text('Seed test results: ' + res.length + ' seeds with issues (showing up to 6)', 16, height * 0.55);
+    for (let i = 0; i < Math.min(res.length, 6); i++) {
+      const r = res[i];
+      text('seed ' + r.seed + ': ' + r.issues.length + ' issues', 16, height * 0.58 + i * 16);
     }
     textAlign(CENTER, CENTER);
   }
-  textSize(12); text('Press S for Settings, T for Tutorial', width/2, height*0.60);
+
+  text('Press S for Settings, T for Tutorial', width/2, y);
   pop();
 }
