@@ -272,7 +272,6 @@ function drawMenu() {
     text('Multiplayer unlocks at level 10', width/2, height*0.39);
   }
   textSize(14); text('W / Space to jump. P to pause. C to customize, H for shop, T for tutorial', width/2, height*0.47);
-  textSize(12); text('Press D to run deterministic seed-safety test (dev)', width/2, height*0.48);
   textSize(12); text('Difficulty: ' + (globalManager?globalManager.difficulty:'?'), width/2, height*0.52);
   textSize(12); text('Total Coins: ' + (globalManager?globalManager.totalCoins:0), width/2, height*0.56);
   if (globalManager) { textSize(12); text('Level: ' + (globalManager.level||0), width/2, height*0.58); }
