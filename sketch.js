@@ -1335,11 +1335,49 @@ function drawMultiSetup(manager) {
 }
 
 function drawMultiSetup(manager) {
+  // configure player 1 then player 2
+  push(); fill(255); textSize(20); textAlign(LEFT, TOP);
+  const cfg = manager.multiConfig;
+  if (!cfg) { text('Error: no multi config', 16,16); pop(); return; }
+  const stage = cfg.stage;
+  const player = stage === 1 ? cfg.p1 : cfg.p2;
+  text('Player ' + stage + ' setup', 16, 16);
+  textSize(14); textAlign(RIGHT, TOP); text('Coins: ' + manager.totalCoins, width-16, 20);
+  if (manager.purchasedAura) { textSize(12); textAlign(RIGHT, TOP); text('Aura style active', width-16, 36); }
+  textSize(14); textAlign(LEFT, TOP); text('Press M to cancel, Enter when done', 40, height-40);
+  // palette (no black, no white) for shape color
+  const palette = [[255,50,180],[0,200,255],[120,255,80],[255,160,0],[180,90,255]];
+  const startX = 40; const startY = 80; const s = 40;
+  for (let i=0;i<palette.length;i++){
+    const col = palette[i]; fill(col[0],col[1],col[2]); stroke(255); rect(startX + i*(s+12), startY, s, s,6);
+    if (player.selectedColor && player.selectedColor[0]===col[0] && player.selectedColor[1]===col[1]) { noFill(); stroke(255,235,0); rect(startX + i*(s+12), startY, s, s,6); }
+  }
+  // aura palette if purchased
+  let auraStartY = startY;
+  if (manager.purchasedAura) {
+    auraStartY = startY + s + 24;
+    textSize(14); fill(255); textAlign(LEFT, TOP); text('Aura color:', startX, auraStartY - 20);
+    for (let i=0;i<palette.length;i++){
+      const col = palette[i]; fill(col[0],col[1],col[2]); stroke(255); rect(startX + i*(s+12), auraStartY, s, s,6);
+      if (player.auraColor && player.auraColor[0]===col[0] && player.auraColor[1]===col[1]) { noFill(); stroke(255,235,0); rect(startX + i*(s+12), auraStartY, s, s,6); }
+    }
+    // aura toggle display
+    textSize(14); textAlign(LEFT, TOP);
+    const toggleY = auraStartY + s + 10;
+    text('Aura: ' + (player.auraEnabled ? 'ON' : 'OFF') + ' (click here to toggle)', startX, toggleY);
+  }
+  // shape preview
+  const px = width/2, py = height/2 - 20, ps = 120;
+  if (manager.purchasedAura && player.auraEnabled) {
+    push(); blendMode(ADD);
+    noStroke();
+    const ac = player.auraColor || player.selectedColor;
+    fill(ac[0], ac[1], ac[2], 120);
     ellipse(px, py, ps * 1.8);
     pop();
   }
-  fill(manager.selectedColor[0], manager.selectedColor[1], manager.selectedColor[2]); stroke(255);
-  const shp = manager.selectedShape || 'square';
+  fill(player.selectedColor[0], player.selectedColor[1], player.selectedColor[2]); stroke(255);
+  const shp = player.selectedShape || 'square';
   if (shp === 'circle') {
     ellipse(px, py, ps);
   } else if (shp === 'square') {
@@ -1368,7 +1406,7 @@ function drawMultiSetup(manager) {
   for (let i=0;i<shapes.length;i++){ const nm = shapes[i]; const sx = width/2 - (shapes.length*(sw+16))/2 + i*(sw+16);
     fill(20); stroke(255);
     // highlight selected shape
-    if (manager.selectedShape === nm) { stroke(255,235,0); strokeWeight(3); rect(sx, sy, sw, sw,8); strokeWeight(2); stroke(255); }
+    if (player.selectedShape === nm) { stroke(255,235,0); strokeWeight(3); rect(sx, sy, sw, sw,8); strokeWeight(2); stroke(255); }
     else rect(sx, sy, sw, sw,8);
     fill(255); textAlign(CENTER, CENTER);
     text(nm, sx+sw/2, sy+sw/2 - 10);
