@@ -1666,69 +1666,7 @@ function drawMultiSetup(manager) {
     endShape(CLOSE);
   }
   pop();
-    // aura toggle display
-    textSize(14); textAlign(LEFT, TOP);
-    const toggleY = auraStartY + s + 10;
-    text('Aura: ' + (manager.auraEnabled ? 'ON' : 'OFF') + ' (click here to toggle)', startX, toggleY);
-  }
-  // live preview center
-  const px = width/2, py = height/2 - 20, ps = 120;
-  // aura preview
-  if (manager.purchasedAura) {
-    push(); blendMode(ADD);
-    noStroke();
-    const ac = manager.auraColor || manager.selectedColor;
-    fill(ac[0], ac[1], ac[2], 120);
-    ellipse(px, py, ps * 1.8);
-    pop();
-  }
-  fill(manager.selectedColor[0], manager.selectedColor[1], manager.selectedColor[2]); stroke(255);
-  const shp = manager.selectedShape || 'square';
-  if (shp === 'circle') {
-    ellipse(px, py, ps);
-  } else if (shp === 'square') {
-    rectMode(CENTER); rect(px, py, ps, ps);
-  } else if (shp === 'x') {
-    const half = ps/2;
-    strokeWeight(4);
-    line(px-half, py-half, px+half, py+half);
-    line(px-half, py+half, px+half, py-half);
-    strokeWeight(2);
-  } else if (shp === 'star') {
-    // draw a simple five-point star
-    const r = ps/2;
-    const r2 = r * 0.5;
-    beginShape();
-    for (let i=0;i<5;i++){
-      let a = -Math.PI/2 + i * (2*Math.PI/5);
-      vertex(px + Math.cos(a)*r - px, py + Math.sin(a)*r - py);
-      a += Math.PI/5;
-      vertex(px + Math.cos(a)*r2 - px, py + Math.sin(a)*r2 - py);
-    }
-    endShape(CLOSE);
-  }
-  // shapes bottom
-  const shapes = ['circle','square','triangle','x','star']; const sy = height - 140; const sw = 80;
-  for (let i=0;i<shapes.length;i++){ const nm = shapes[i]; const sx = width/2 - (shapes.length*(sw+16))/2 + i*(sw+16);
-    fill(20); stroke(255);
-    // highlight selected shape
-    if (manager.selectedShape === nm) { stroke(255,235,0); strokeWeight(3); rect(sx, sy, sw, sw,8); strokeWeight(2); stroke(255); }
-    else rect(sx, sy, sw, sw,8);
-    fill(255); textAlign(CENTER, CENTER);
-    text(nm, sx+sw/2, sy+sw/2 - 10);
-    if (manager.purchasedShapes.indexOf(nm) === -1) { fill(255,180,0); text('Buy', sx+sw/2, sy+sw/2 + 24); }
-    else { fill(0,200,120); text('Equip', sx+sw/2, sy+sw/2 + 24); }
-  }
-  // equip flash indicator (brief toast)
-  if (manager.equipFlashUntil && Date.now() < manager.equipFlashUntil) {
-    const alpha = Math.floor(200 * (1 - (manager.equipFlashUntil - Date.now()) / 1200));
-    push(); rectMode(CENTER); fill(0,180,80, alpha); stroke(255); strokeWeight(1);
-    const bx = px + ps/2 + 60, by = py - ps/2;
-    rect(bx, by, 140, 40, 8);
-    noStroke(); fill(255,255,255,alpha); textAlign(CENTER, CENTER); textSize(14); text('Equipped: ' + (manager.equipFlashShape||''), bx, by);
-    pop();
-  }
-  pop();
+}
 
 function onPlayerDeath(player) {
   // freeze audio and trigger game over immediately
