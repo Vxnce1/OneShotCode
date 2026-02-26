@@ -1729,7 +1729,6 @@ function drawMultiSetup(manager) {
     pop();
   }
   pop();
-}
 
 function onPlayerDeath(player) {
   // freeze audio and trigger game over immediately
@@ -1896,3 +1895,4 @@ function mousePressed() {
     }
   }
 }
+
