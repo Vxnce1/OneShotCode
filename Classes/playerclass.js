@@ -135,122 +135,81 @@ class Player {
   }
 
   render(cx, centerX, centerY, opacity = 1) {
+    // Render player at provided screen coordinates (centerX, centerY)
     push();
-    translate(centerX, this.y);
+    translate(centerX, centerY);
 
-HEAD
-    // apply rotation only in air
-    if (!this.grounded) {
-      rotate(radians(this.rotation));
-    }
-
-    // draw player shape
-    noFill();
-    stroke(255);
-    strokeWeight(2);
-    fill(this.color[0], this.color[1], this.color[2], 220 * opacity);
-
-    if (this.shape === 'circle') {
-      ellipse(0, 0, this.width, this.height);
-    } else if (this.shape === 'square') {
-      rectMode(CENTER);
-      rect(0, 0, this.width, this.height);
-    } else if (this.shape === 'triangle') {
-      const w = this.width / 2;
-      const h = this.height / 2;
-      triangle(-w, h, w, h, 0, -h);
-    } else if (this.shape === 'x') {
-      strokeWeight(4);
-      line(-this.width/2, -this.height/2, this.width/2, this.height/2);
-      line(-this.width/2, this.height/2, this.width/2, -this.height/2);
-      strokeWeight(2);
-    } else if (this.shape === 'star') {
-      const r = this.width / 2;
-      const r2 = r * 0.5;
-      beginShape();
-      for (let i = 0; i < 5; i++) {
-        let a = -Math.PI/2 + i * (2 * Math.PI / 5);
-        vertex(Math.cos(a) * r, Math.sin(a) * r);
-        a += Math.PI / 5;
-        vertex(Math.cos(a) * r2, Math.sin(a) * r2);
-      }
-      endShape(CLOSE);
-    }
-
-    pop();
-    // aura glow (if purchased and enabled)
+    // determine aura settings (drawn behind the player)
+    let auraEnabled = false;
+    let auraCol = this.color;
     if (this.manager && this.manager.purchasedAura) {
-      // determine color/enable based on mode
-      let col;
-      let enabled = false;
       if (this.manager.state === STATES.PLAYING_MULTI) {
         if (this.index === 0) {
-          enabled = this.manager.auraEnabledP1;
-          col = this.manager.auraColorP1 || this.manager.selectedColor || this.color;
+          auraEnabled = !!this.manager.auraEnabledP1;
+          auraCol = this.manager.auraColorP1 || this.manager.selectedColor || this.color;
         } else {
-          enabled = this.manager.auraEnabledP2;
-          col = this.manager.auraColorP2 || this.manager.selectedColor || this.color;
+          auraEnabled = !!this.manager.auraEnabledP2;
+          auraCol = this.manager.auraColorP2 || this.manager.selectedColor || this.color;
         }
       } else {
-        enabled = this.manager.auraEnabled;
-        col = this.manager.auraColor || this.manager.selectedColor || this.color;
-      }
-      if (enabled) {
-        push();
-        blendMode(ADD);
-        noStroke();
-        // pulsate alpha between ~60 and ~180 over time
-        const t = (this.manager.runTime || 0) * 2.0;
-        const glow = 0.5 + 0.5 * Math.sin(t);
-        const a = 60 + 120 * glow;
-        // hide when very dim to avoid seeing ghosted circle
-        if (a > 40) {
-          fill(col[0], col[1], col[2], a * opacity);
-          const sizeFactor = 1.4; // slightly larger than shape, but smaller than before
-          // draw same shape as player
-          if (this.shape === 'circle') {
-            ellipse(0, 0, this.width * sizeFactor, this.height * sizeFactor);
-          } else if (this.shape === 'square') {
-            rectMode(CENTER);
-            rect(0, 0, this.width * sizeFactor, this.height * sizeFactor);
-          } else if (this.shape === 'x') {
-            strokeWeight(4);
-            line(-this.width * sizeFactor/2, -this.height * sizeFactor/2, this.width * sizeFactor/2, this.height * sizeFactor/2);
-            line(-this.width * sizeFactor/2, this.height * sizeFactor/2, this.width * sizeFactor/2, -this.height * sizeFactor/2);
-            strokeWeight(2);
-          } else if (this.shape === 'star') {
-            const r = (this.width * sizeFactor) / 2;
-            const r2 = r * 0.5;
-            beginShape();
-            for (let i = 0; i < 5; i++) {
-              let a2 = -Math.PI/2 + i * (2 * Math.PI / 5);
-              vertex(Math.cos(a2) * r, Math.sin(a2) * r);
-              a2 += Math.PI / 5;
-              vertex(Math.cos(a2) * r2, Math.sin(a2) * r2);
-            }
-            endShape(CLOSE);
-          }
-        }
-        pop();
+        auraEnabled = !!this.manager.auraEnabled;
+        auraCol = this.manager.auraColor || this.manager.selectedColor || this.color;
       }
     }
 
-    // rotation enabled; draw upright with rotation
-    rotate(radians(this.rotation));
-    noFill(); stroke(255); strokeWeight(2);
-    fill(this.color[0], this.color[1], this.color[2], 220*opacity);
+    // draw aura first if enabled
+    if (auraEnabled) {
+      push();
+      if (!this.grounded) rotate(radians(this.rotation));
+      blendMode(ADD);
+      noStroke();
+      const t = (this.manager && this.manager.runTime) ? (this.manager.runTime * 2.0) : 0;
+      const glow = 0.5 + 0.5 * Math.sin(t);
+      const a = 60 + 120 * glow;
+      if (a > 40) {
+        fill(auraCol[0], auraCol[1], auraCol[2], a * opacity);
+        const sizeFactor = 1.4;
+        if (this.shape === 'circle') ellipse(0, 0, this.width * sizeFactor, this.height * sizeFactor);
+        else if (this.shape === 'square') { rectMode(CENTER); rect(0, 0, this.width * sizeFactor, this.height * sizeFactor); }
+        else if (this.shape === 'x') {
+          stroke(auraCol[0], auraCol[1], auraCol[2], a * opacity);
+          strokeWeight(4);
+          line(-this.width * sizeFactor/2, -this.height * sizeFactor/2, this.width * sizeFactor/2, this.height * sizeFactor/2);
+          line(-this.width * sizeFactor/2, this.height * sizeFactor/2, this.width * sizeFactor/2, -this.height * sizeFactor/2);
+          strokeWeight(2);
+          noFill();
+        } else if (this.shape === 'star') {
+          const r = (this.width * sizeFactor) / 2;
+          const r2 = r * 0.5;
+          beginShape();
+          for (let i = 0; i < 5; i++) {
+            let a2 = -Math.PI/2 + i * (2 * Math.PI / 5);
+            vertex(Math.cos(a2) * r, Math.sin(a2) * r);
+            a2 += Math.PI / 5;
+            vertex(Math.cos(a2) * r2, Math.sin(a2) * r2);
+          }
+          endShape(CLOSE);
+        }
+      }
+      pop();
+    }
 
+    // draw main player shape
+    push();
+    if (!this.grounded) rotate(radians(this.rotation));
+    noStroke();
+    fill(this.color[0], this.color[1], this.color[2], 220 * opacity);
     if (this.shape === 'circle') {
       ellipse(0, 0, this.width, this.height);
     } else if (this.shape === 'square') {
       rectMode(CENTER);
       rect(0, 0, this.width, this.height);
     } else if (this.shape === 'triangle') {
-      // upward-pointing triangle
       const w = this.width / 2;
       const h = this.height / 2;
       triangle(-w, h, w, h, 0, -h);
     } else if (this.shape === 'x') {
+      stroke(255);
       strokeWeight(4);
       line(-this.width/2, -this.height/2, this.width/2, this.height/2);
       line(-this.width/2, this.height/2, this.width/2, -this.height/2);
@@ -267,6 +226,7 @@ HEAD
       }
       endShape(CLOSE);
     }
+    pop();
 
     pop();
   }

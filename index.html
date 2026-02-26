@@ -24,12 +24,17 @@
   </head>
   <body>
     <div id="game-container"></div>
-    <script src="sketch.js"></script>
-    <script src="classes.js"></script>
-    <script src="keypressed.js"></script>
-    <script src="p5canvas.js"></script>
-    <script src="playerclass.js"></script>
-    <script src="shop.js"></script>
-    <script src="worldgenclass.js"></script>
+        <!-- load game source files in dependency order so that
+          things like ParticleSystem/Player/etc are defined
+          before the code that actually constructs them (p5canvas.js)
+          sketch.js contains configuration/helpers and must come
+          before everything else as it is referenced widely. -->
+        <script src="sketch.js"></script>
+        <script src="Classes/classes.js"></script>
+        <script src="Classes/worldgenclass.js"></script>
+        <script src="Classes/playerclass.js"></script>
+        <script src="Classes/shop.js"></script>
+        <script src="Classes/keypressed.js"></script>
+        <script src="Classes/p5canvas.js"></script>
   </body>
 </html>
