@@ -154,16 +154,9 @@ class Player {
       this.inputBufferUntil = -9999;
     }
 
-<<<<<<< HEAD
-    if (!this.grounded) {
-      this.rotation += this.rotSpeed * dt;
-      this.rotation %= 360;
-    }
-=======
     // update rotation
     this.rotation += this.rotSpeed * dt;
     while (this.rotation >= 360) this.rotation -= 360;
->>>>>>> fa9f5f24bd1d0d9f77389e7b8641a80e8600657b
   }
 
   getAABB() {
@@ -1339,22 +1332,9 @@ function drawMultiSetup(manager) {
     endShape(CLOSE);
   }
   pop();
-<<<<<<< HEAD
 }
-=======
-    // aura toggle display
-    textSize(14); textAlign(LEFT, TOP);
-    const toggleY = auraStartY + s + 10;
-    text('Aura: ' + (manager.auraEnabled ? 'ON' : 'OFF') + ' (click here to toggle)', startX, toggleY);
-  }
-  // live preview center
-  const px = width/2, py = height/2 - 20, ps = 120;
-  // aura preview
-  if (manager.purchasedAura) {
-    push(); blendMode(ADD);
-    noStroke();
-    const ac = manager.auraColor || manager.selectedColor;
-    fill(ac[0], ac[1], ac[2], 120);
+
+function drawMultiSetup(manager) {
     ellipse(px, py, ps * 1.8);
     pop();
   }
@@ -1405,12 +1385,7 @@ function drawMultiSetup(manager) {
     pop();
   }
   pop();
-<<<<<<< HEAD
-  }
 }
-=======
->>>>>>> add826f2fe87b0a38fa4dafa63c98dc24d39b74b
->>>>>>> 6d38ae3917c8dc1ddcaa0c0590e780b0402d83bb
 
 function onPlayerDeath(player) {
   // freeze audio and trigger game over immediately
