@@ -138,7 +138,6 @@ class Player {
     push();
     translate(centerX, this.y);
 
-HEAD
     // apply rotation only in air
     if (!this.grounded) {
       rotate(radians(this.rotation));
