@@ -1402,8 +1402,11 @@ function drawMultiSetup(manager) {
     pop();
   }
   pop();
+<<<<<<< HEAD
   }
 }
+=======
+>>>>>>> add826f2fe87b0a38fa4dafa63c98dc24d39b74b
 
 function onPlayerDeath(player) {
   // freeze audio and trigger game over immediately
@@ -1570,3 +1573,4 @@ function mousePressed() {
     }
   }
 }
+
