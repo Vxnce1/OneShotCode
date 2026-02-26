@@ -385,14 +385,14 @@ class Player {
     this.x = 0;
     this.y = 0;
     this.vy = 0;
-    this.width = 40; 
+    this.width = 40;
     this.height = 40;
     this.grounded = false;
     this.gravityDir = 1;
 
     // rotation fields
     this.rotation = 0;
-    this.rotSpeed = 360;
+    this.rotSpeed = 360; // degrees per second
 
     this.shape = 'square';
     this.color = [0,255,200];
@@ -430,6 +430,10 @@ class Player {
       this.vy = CONFIG.initialJumpVelocity * this.gravityDir;
       this.grounded = false;
       this.lastJumpTime = tNow;
+
+      // start rotation when jumping
+      this.rotation = 0;
+
       return true;
     }
     return false;
@@ -460,6 +464,10 @@ class Player {
         this.grounded = true;
         this.vy = 0;
         this.coyoteUntil = -9999;
+
+        // stop rotation when grounded
+        this.rotation = 0;
+
       } else {
         if (wasGrounded) {
           this.coyoteUntil = tNow + (CONFIG.coyoteTimeMs / 1000);
@@ -482,7 +490,11 @@ class Player {
       this.inputBufferUntil = -9999;
     }
 
-    // rotation is unused; keep sprite upright
+    // 🔥 ROTATION ONLY WHILE IN AIR
+    if (!this.grounded) {
+      this.rotation += this.rotSpeed * dt;
+      this.rotation %= 360;
+    }
   }
 
   getAABB() {
@@ -502,50 +514,16 @@ class Player {
     push();
     translate(centerX, this.y);
 
-    // aura glow (if purchased and enabled)
-    if (this.manager && this.manager.purchasedAura && this.manager.auraEnabled) {
-      push();
-      blendMode(ADD);
-      noStroke();
-      const col = this.manager.auraColor || this.manager.selectedColor || this.color;
-      // pulsate alpha between ~60 and ~180 over time
-      const t = (this.manager.runTime || 0) * 2.0;
-      const glow = 0.5 + 0.5 * Math.sin(t);
-      const a = 60 + 120 * glow;
-      // hide when very dim to avoid seeing ghosted circle
-      if (a > 40) {
-        fill(col[0], col[1], col[2], a * opacity);
-        const sizeFactor = 1.4; // slightly larger than shape, but smaller than before
-        // draw same shape as player
-        if (this.shape === 'circle') {
-          ellipse(0, 0, this.width * sizeFactor, this.height * sizeFactor);
-        } else if (this.shape === 'square') {
-          rectMode(CENTER);
-          rect(0, 0, this.width * sizeFactor, this.height * sizeFactor);
-        } else if (this.shape === 'x') {
-          strokeWeight(4);
-          line(-this.width * sizeFactor/2, -this.height * sizeFactor/2, this.width * sizeFactor/2, this.height * sizeFactor/2);
-          line(-this.width * sizeFactor/2, this.height * sizeFactor/2, this.width * sizeFactor/2, -this.height * sizeFactor/2);
-          strokeWeight(2);
-        } else if (this.shape === 'star') {
-          const r = (this.width * sizeFactor) / 2;
-          const r2 = r * 0.5;
-          beginShape();
-          for (let i = 0; i < 5; i++) {
-            let a2 = -Math.PI/2 + i * (2 * Math.PI / 5);
-            vertex(Math.cos(a2) * r, Math.sin(a2) * r);
-            a2 += Math.PI / 5;
-            vertex(Math.cos(a2) * r2, Math.sin(a2) * r2);
-          }
-          endShape(CLOSE);
-        }
-      }
-      pop();
+    // apply rotation only in air
+    if (!this.grounded) {
+      rotate(radians(this.rotation));
     }
 
-    // rotation disabled; draw upright
-    noFill(); stroke(255); strokeWeight(2);
-    fill(this.color[0], this.color[1], this.color[2], 220*opacity);
+    // draw player shape
+    noFill();
+    stroke(255);
+    strokeWeight(2);
+    fill(this.color[0], this.color[1], this.color[2], 220 * opacity);
 
     if (this.shape === 'circle') {
       ellipse(0, 0, this.width, this.height);
@@ -553,7 +531,6 @@ class Player {
       rectMode(CENTER);
       rect(0, 0, this.width, this.height);
     } else if (this.shape === 'triangle') {
-      // upward-pointing triangle
       const w = this.width / 2;
       const h = this.height / 2;
       triangle(-w, h, w, h, 0, -h);
@@ -578,8 +555,6 @@ class Player {
     pop();
   }
 }
-
-
 
 /* ======= Map Generator and World ======= */
 class MapGenerator {
