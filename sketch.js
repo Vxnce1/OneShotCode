@@ -527,7 +527,9 @@ class Player {
       this.inputBufferUntil = -9999;
     }
 
-    // rotation is unused; keep sprite upright
+    // update rotation
+    this.rotation += this.rotSpeed * dt;
+    while (this.rotation >= 360) this.rotation -= 360;
   }
 
   getAABB() {
@@ -603,7 +605,8 @@ class Player {
         pop();
       }
 
-      // rotation disabled; draw upright
+      // rotation enabled; draw upright with rotation
+      rotate(radians(this.rotation));
       noFill(); stroke(255); strokeWeight(2);
       fill(this.color[0], this.color[1], this.color[2], 220*opacity);
 
@@ -635,7 +638,7 @@ class Player {
         endShape(CLOSE);
       }
 
-      pop();
+    pop();
   }
 }
 
