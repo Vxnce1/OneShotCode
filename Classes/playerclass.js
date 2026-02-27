@@ -116,7 +116,7 @@ class Player {
     }
 
     if (!this.grounded) {
-      this.rotation += this.rotSpeed * dt;
+      this.rotation += this.rotSpeed * (dt/1000);
       this.rotation %= 360;
     }
   }
@@ -139,52 +139,9 @@ class Player {
     push();
     translate(centerX, centerY);
 
-<<<<<<< HEAD
     // determine aura settings (drawn behind the player)
     let auraEnabled = false;
     let auraCol = this.color;
-=======
-    // apply rotation only in air
-    if (!this.grounded) {
-      rotate(radians(this.rotation));
-    }
-
-    // draw player shape
-    noFill();
-    stroke(255);
-    strokeWeight(2);
-    fill(this.color[0], this.color[1], this.color[2], 220 * opacity);
-
-    if (this.shape === 'circle') {
-      ellipse(0, 0, this.width, this.height);
-    } else if (this.shape === 'square') {
-      rectMode(CENTER);
-      rect(0, 0, this.width, this.height);
-    } else if (this.shape === 'triangle') {
-      const w = this.width / 2;
-      const h = this.height / 2;
-      triangle(-w, h, w, h, 0, -h);
-    } else if (this.shape === 'x') {
-      strokeWeight(4);
-      line(-this.width/2, -this.height/2, this.width/2, this.height/2);
-      line(-this.width/2, this.height/2, this.width/2, -this.height/2);
-      strokeWeight(2);
-    } else if (this.shape === 'star') {
-      const r = this.width / 2;
-      const r2 = r * 0.5;
-      beginShape();
-      for (let i = 0; i < 5; i++) {
-        let a = -Math.PI/2 + i * (2 * Math.PI / 5);
-        vertex(Math.cos(a) * r, Math.sin(a) * r);
-        a += Math.PI / 5;
-        vertex(Math.cos(a) * r2, Math.sin(a) * r2);
-      }
-      endShape(CLOSE);
-    }
-
-    pop();
-    // aura glow (if purchased and enabled)
->>>>>>> 55453063f4b719035ffffafeab343fd1d337c087
     if (this.manager && this.manager.purchasedAura) {
       if (this.manager.state === STATES.PLAYING_MULTI) {
         if (this.index === 0) {
@@ -203,7 +160,7 @@ class Player {
     // draw aura first if enabled
     if (auraEnabled) {
       push();
-      if (!this.grounded) rotate(radians(this.rotation));
+     rotate(radians(this.rotation));
       blendMode(ADD);
       noStroke();
       const t = (this.manager && this.manager.runTime) ? (this.manager.runTime * 2.0) : 0;
