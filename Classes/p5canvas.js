@@ -24,8 +24,11 @@ function setup() {
   globalManager.changeState(STATES.MENU);
   // volume slider (hidden during gameplay)
   window.volumeSlider = createSlider(0,1,globalManager.volume,0.01);
+  volumeSlider.parent(container);
   volumeSlider.position(width-220,16);
   volumeSlider.style('z-index','9999');
+  // ensure slider can receive focus/clicks
+  try { volumeSlider.elt.style.pointerEvents = 'auto'; } catch(e) {}
   volumeSlider.input(()=>{ globalManager.volume = parseFloat(volumeSlider.value()); globalManager.audio.setVolume(globalManager.volume); globalManager.save('volume', globalManager.volume); });
   volumeSlider.hide();
 }
@@ -215,17 +218,26 @@ function draw() {
     fill(255); textSize(32); textAlign(CENTER, CENTER); text('PAUSED', width/2, height/2 - 60);
     if (!window.resumeButton) {
       window.resumeButton = createButton('Resume');
+      window.resumeButton.parent(document.getElementById('game-container'));
+      window.resumeButton.addClass('btn');
       window.resumeButton.position(width/2 - 50, height/2 - 20);
+      try { window.resumeButton.elt.style.pointerEvents = 'auto'; } catch(e) {}
       window.resumeButton.mousePressed(() => globalManager.pauseToggle());
     }
     if (!window.restartButton) {
       window.restartButton = createButton('Restart');
+      window.restartButton.parent(document.getElementById('game-container'));
+      window.restartButton.addClass('btn');
       window.restartButton.position(width/2 - 50, height/2 + 10);
+      try { window.restartButton.elt.style.pointerEvents = 'auto'; } catch(e) {}
       window.restartButton.mousePressed(() => { globalManager.startSingle(); });
     }
     if (!window.menuButton) {
       window.menuButton = createButton('Menu');
+      window.menuButton.parent(document.getElementById('game-container'));
+      window.menuButton.addClass('btn');
       window.menuButton.position(width/2 - 50, height/2 + 40);
+      try { window.menuButton.elt.style.pointerEvents = 'auto'; } catch(e) {}
       window.menuButton.mousePressed(() => globalManager.changeState(STATES.MENU));
     }
     window.resumeButton.show();
@@ -247,7 +259,10 @@ function draw() {
     }
     if (!window.restartGameOverButton) {
       window.restartGameOverButton = createButton('Restart');
+      window.restartGameOverButton.parent(document.getElementById('game-container'));
+      window.restartGameOverButton.addClass('btn');
       window.restartGameOverButton.position(width/2 - 50, height/2 + 10);
+      try { window.restartGameOverButton.elt.style.pointerEvents = 'auto'; } catch(e) {}
       window.restartGameOverButton.mousePressed(() => {
         if (globalManager.lastMode === STATES.PLAYING_MULTI) globalManager.startMulti();
         else globalManager.startSingle();
@@ -255,7 +270,10 @@ function draw() {
     }
     if (!window.menuGameOverButton) {
       window.menuGameOverButton = createButton('Menu');
+      window.menuGameOverButton.parent(document.getElementById('game-container'));
+      window.menuGameOverButton.addClass('btn');
       window.menuGameOverButton.position(width/2 - 50, height/2 + 40);
+      try { window.menuGameOverButton.elt.style.pointerEvents = 'auto'; } catch(e) {}
       window.menuGameOverButton.mousePressed(() => globalManager.changeState(STATES.MENU));
     }
     window.restartGameOverButton.show();
