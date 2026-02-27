@@ -155,6 +155,8 @@ class GameManager {
     if (window.restartGameOverButton) window.restartGameOverButton.hide();
     if (window.menuGameOverButton) window.menuGameOverButton.hide();
     if (window.volumeSlider) volumeSlider.hide();
+    if (window.customizeButton) window.customizeButton.hide();
+    if (window.customizeBackButton) window.customizeBackButton.hide();
     if (newState === STATES.LOADING) {
       /* nothing */
     }

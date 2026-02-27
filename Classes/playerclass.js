@@ -19,7 +19,7 @@ class Player {
 
     // Rotation system
     this.angle = 0;        // current angle (degrees)
-    this.spinSpeed = 120;  // degrees per second
+    this.spinSpeed = 720;  // degrees per second
 
     this.shape = "square";
     this.color = [0, 255, 200];

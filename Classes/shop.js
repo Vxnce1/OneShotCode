@@ -125,6 +125,145 @@ function drawShop(manager) {
   }
 }
 
+// render the customization screen (color palette + shape selection)
+function drawCustomize(manager) {
+  push();
+  fill(255);
+  textSize(20);
+  textAlign(CENTER, TOP);
+  text('Customize', width / 2, 24);
+
+  const palette = [
+    [255, 50, 180],
+    [0, 200, 255],
+    [120, 255, 80],
+    [255, 160, 0],
+    [180, 90, 255]
+  ];
+
+  const startX = 40;
+  const startY = 80;
+  const s = 40;
+
+  // shape color row
+  for (let i = 0; i < palette.length; i++) {
+    const x = startX + i * (s + 12);
+    noStroke();
+    fill(...palette[i]);
+    rect(x, startY, s, s, 4);
+    if (manager.selectedColor &&
+        palette[i][0] === manager.selectedColor[0] &&
+        palette[i][1] === manager.selectedColor[1] &&
+        palette[i][2] === manager.selectedColor[2]) {
+      stroke(255);
+      noFill();
+      rect(x, startY, s, s, 4);
+    }
+  }
+
+  // aura palette if owned
+  if (manager.purchasedAura) {
+    const auraY = startY + s + 24;
+    for (let i = 0; i < palette.length; i++) {
+      const x = startX + i * (s + 12);
+      noStroke();
+      fill(...palette[i]);
+      rect(x, auraY, s, s, 4);
+      if (manager.auraColor &&
+          palette[i][0] === manager.auraColor[0] &&
+          palette[i][1] === manager.auraColor[1] &&
+          palette[i][2] === manager.auraColor[2]) {
+        stroke(255);
+        noFill();
+        rect(x, auraY, s, s, 4);
+      }
+    }
+    fill(255);
+    noStroke();
+    textAlign(LEFT, CENTER);
+    text('Aura ' + (manager.auraEnabled ? 'on' : 'off'), startX, auraY + s + 20);
+  }
+
+  // live preview in centre
+  const previewSize = 80;
+  push();
+  translate(width / 2, height / 2 - 20);
+  fill(...(manager.selectedColor || [255, 255, 255]));
+  noStroke();
+  const shape = manager.selectedShape || 'circle';
+  if (shape === 'circle') ellipse(0, 0, previewSize, previewSize);
+  else if (shape === 'square') rect(0, 0, previewSize, previewSize);
+  else if (shape === 'triangle')
+    triangle(-previewSize/2, previewSize/2, 0, -previewSize/2, previewSize/2, previewSize/2);
+  else if (shape === 'x') {
+    stroke(255);
+    line(-previewSize/2, -previewSize/2, previewSize/2, previewSize/2);
+    line(-previewSize/2, previewSize/2, previewSize/2, -previewSize/2);
+  } else if (shape === 'star') {
+    // simple 5-point star
+    beginShape();
+    for (let a = 0; a < 360; a += 72) {
+      const r = a % 144 === 0 ? previewSize / 2 : previewSize / 4;
+      vertex(cos(a) * r, sin(a) * r);
+    }
+    endShape(CLOSE);
+  }
+  if (manager.auraEnabled && manager.auraColor) {
+    noFill();
+    stroke(...manager.auraColor);
+    strokeWeight(4);
+    ellipse(0, 0, previewSize + 16, previewSize + 16);
+    strokeWeight(1);
+    noStroke();
+  }
+  pop();
+
+  // shape selection row (mirrors click logic in sketch.js)
+  const shapes = ['circle', 'square', 'triangle', 'x', 'star'];
+  const sy = height - 140;
+  const sw = 80;
+  for (let i = 0; i < shapes.length; i++) {
+    const sx = width/2 - (shapes.length * (sw + 16)) / 2 + i * (sw + 16);
+    rectMode(CORNER);
+    stroke(255);
+    noFill();
+    rect(sx, sy, sw, sw, 8);
+    fill(255);
+    noStroke();
+    textAlign(CENTER, CENTER);
+    text(shapes[i], sx + sw/2, sy + sw/2);
+
+    if (manager.selectedShape === shapes[i]) {
+      textSize(24);
+      text('✓', sx + sw - 16, sy + 16);
+      textSize(14);
+    }
+
+    if (!manager.purchasedShapes.includes(shapes[i])) {
+      fill(255, 204, 0);
+      textSize(12);
+      let pr = 0;
+      if (shapes[i] === 'x') pr = 50;
+      else if (shapes[i] === 'star') pr = 100;
+      else if (shapes[i] === 'triangle') pr = 70;
+      text('Price: ' + pr, sx + sw/2, sy + sw - 20);
+
+      fill(0, 0, 0, 140);
+      rect(sx, sy, sw, sw, 8);
+
+      fill(255);
+      textSize(12);
+      text('LOCKED', sx + sw/2, sy + sw/2);
+    }
+    textSize(14);
+  }
+
+  textAlign(CENTER);
+  textSize(12);
+  text('Press M for menu', width/2, height - 16);
+  pop();
+}
+
 function drawSettings(manager) {
   push();
   fill(255);

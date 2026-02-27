@@ -46,7 +46,13 @@ function keyPressed() {
   //   }
   // }
   if (key === 'P' || key === 'p') globalManager.pauseToggle();
-  if (keyCode === ENTER) {
+  // log every key so we can debug input issues
+  // (this will appear in the browser console)
+  console.log('keyPressed', key, keyCode, 'state=', globalManager ? globalManager.state : '?');
+
+  // sometimes browsers report the Enter key as a string rather than
+  // using the keyCode constant, so accept both forms here.
+  if (keyCode === ENTER || key === 'Enter') {
     if (globalManager.state === STATES.MENU) globalManager.startSingle();
     else if (globalManager.state === STATES.GAMEOVER) globalManager.startSingle();
   }
