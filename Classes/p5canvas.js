@@ -339,6 +339,7 @@ function drawMenu() {
   } else {
     text('Multiplayer unlocks at level 10', width/2, y);
   }
+<<<<<<< HEAD
   y += 40;
 
   textSize(14);
@@ -358,6 +359,12 @@ function drawMenu() {
     y += 18;
   }
 
+=======
+  textSize(14); text('W / Space to jump. P to pause. C to customize, H for shop, T for tutorial', width/2, height*0.47);
+  textSize(12); text('Difficulty: ' + (globalManager?globalManager.difficulty:'?'), width/2, height*0.52);
+  textSize(12); text('Total Coins: ' + (globalManager?globalManager.totalCoins:0), width/2, height*0.56);
+  if (globalManager) { textSize(12); text('Level: ' + (globalManager.level||0), width/2, height*0.58); }
+>>>>>>> 55453063f4b719035ffffafeab343fd1d337c087
   if (globalManager && globalManager.debugTestResults) {
     const res = globalManager.debugTestResults;
     textSize(12);
