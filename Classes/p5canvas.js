@@ -71,7 +71,25 @@ function draw() {
     if (window.menuButton) window.menuButton.hide();
     if (window.restartGameOverButton) window.restartGameOverButton.hide();
     if (window.menuGameOverButton) window.menuGameOverButton.hide();
+    // also hide the customize button before redrawing
+    if (window.customizeButton) window.customizeButton.hide();
+
     drawMenu();
+
+    // create / show a dedicated "Customize" button so users can click
+    // rather than having to know the 'C' hotkey. this mirrors the
+    // pause/menu UI buttons elsewhere in the code.
+    if (!window.customizeButton) {
+      window.customizeButton = createButton('Customize');
+      window.customizeButton.parent(document.getElementById('game-container'));
+      window.customizeButton.addClass('btn');
+      // position slightly below the menu text zone
+      window.customizeButton.position(width/2 - 50, height/2 + 70);
+      try { window.customizeButton.elt.style.pointerEvents = 'auto'; } catch(e) {}
+      window.customizeButton.mousePressed(() => globalManager.changeState(STATES.CUSTOMIZE));
+    }
+    window.customizeButton.show();
+
     // ensure the volume slider never keeps focus – otherwise
     // pressing Enter will adjust the slider instead of starting
     // the run.  we only blur if the element actually exists.
@@ -281,7 +299,22 @@ function draw() {
   }
   // Shop / Customize overlays
   if (globalManager.state === STATES.SHOP) drawShop(globalManager);
-  if (globalManager.state === STATES.CUSTOMIZE) drawCustomize(globalManager);
+  if (globalManager.state === STATES.CUSTOMIZE) {
+    drawCustomize(globalManager);
+    // render a back button to exit customization
+    if (!window.customizeBackButton) {
+      window.customizeBackButton = createButton('Back');
+      window.customizeBackButton.parent(document.getElementById('game-container'));
+      window.customizeBackButton.addClass('btn');
+      // bottom-right corner
+      window.customizeBackButton.position(width - 100, height - 40);
+      try { window.customizeBackButton.elt.style.pointerEvents = 'auto'; } catch(e) {}
+      window.customizeBackButton.mousePressed(() => globalManager.changeState(STATES.MENU));
+    }
+    window.customizeBackButton.show();
+  } else {
+    if (window.customizeBackButton) window.customizeBackButton.hide();
+  }
   if (globalManager.state === STATES.SETTINGS) drawSettings(globalManager);
 }
 
